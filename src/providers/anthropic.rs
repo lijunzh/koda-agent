@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const ANTHROPIC_BETA_FEATURES: &str = "prompt-caching-2024-07-31";
 
 /// Known Claude models (Anthropic doesn't have a /models endpoint).
 const CLAUDE_MODELS: &[&str] = &[
@@ -30,6 +31,52 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
+    /// Build the system prompt as a cacheable content block array.
+    /// The cache_control on the last block tells Anthropic to cache
+    /// everything up to and including that block.
+    fn build_cached_system(system_text: &str) -> serde_json::Value {
+        serde_json::json!([
+            {
+                "type": "text",
+                "text": system_text,
+                "cache_control": { "type": "ephemeral" }
+            }
+        ])
+    }
+
+    /// Build tool definitions with cache_control on the last tool.
+    /// This caches the entire tool schema prefix.
+    fn build_cached_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+        let len = tools.len();
+        tools
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let mut tool = serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.parameters,
+                });
+                // Mark the last tool as the cache breakpoint
+                if i == len - 1 {
+                    tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+                }
+                tool
+            })
+            .collect()
+    }
+
+    /// Log cache hit/miss info at debug level.
+    fn log_cache_stats(usage: &AnthropicUsage) {
+        if usage.cache_read_input_tokens > 0 || usage.cache_creation_input_tokens > 0 {
+            tracing::debug!(
+                "Prompt cache: read={}tok, created={}tok, uncached={}tok",
+                usage.cache_read_input_tokens,
+                usage.cache_creation_input_tokens,
+                usage.input_tokens,
+            );
+        }
+    }
     pub fn new(api_key: String, base_url: Option<&str>) -> Self {
         Self {
             client: super::build_http_client(),
@@ -49,10 +96,10 @@ struct MessagesRequest {
     model: String,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
+    system: Option<serde_json::Value>,
     messages: Vec<AnthropicMessage>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<AnthropicTool>,
+    tools: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Clone)]
@@ -98,12 +145,6 @@ struct ImageSource {
     data: String,
 }
 
-#[derive(Serialize)]
-struct AnthropicTool {
-    name: String,
-    description: String,
-    input_schema: serde_json::Value,
-}
 
 // ── Response types ───────────────────────────────────────────
 
@@ -113,10 +154,16 @@ struct MessagesResponse {
     usage: AnthropicUsage,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 struct AnthropicUsage {
     input_tokens: i64,
     output_tokens: i64,
+    /// Tokens written to cache on this request (first time penalty, then free).
+    #[serde(default)]
+    cache_creation_input_tokens: i64,
+    /// Tokens read from cache (90% cheaper than regular input).
+    #[serde(default)]
+    cache_read_input_tokens: i64,
 }
 
 // ── SSE Streaming types ──────────────────────────────────────
@@ -169,19 +216,12 @@ impl LlmProvider for AnthropicProvider {
         let system = messages
             .iter()
             .find(|m| m.role == "system")
-            .and_then(|m| m.content.clone());
+            .and_then(|m| m.content.as_ref())
+            .map(|text| Self::build_cached_system(text));
 
         // Convert messages (skip system, convert tool results)
         let api_messages = self.convert_messages(messages);
-
-        let api_tools: Vec<AnthropicTool> = tools
-            .iter()
-            .map(|t| AnthropicTool {
-                name: t.name.clone(),
-                description: t.description.clone(),
-                input_schema: t.parameters.clone(),
-            })
-            .collect();
+        let api_tools = Self::build_cached_tools(tools);
 
         let request = MessagesRequest {
             model: model.to_string(),
@@ -196,6 +236,7 @@ impl LlmProvider for AnthropicProvider {
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_API_VERSION)
+            .header("anthropic-beta", ANTHROPIC_BETA_FEATURES)
             .json(&request)
             .send()
             .await
@@ -236,11 +277,15 @@ impl LlmProvider for AnthropicProvider {
             Some(content_text)
         };
 
+        Self::log_cache_stats(&msg_resp.usage);
+
         Ok(LlmResponse {
             content,
             tool_calls,
             usage: TokenUsage {
-                prompt_tokens: msg_resp.usage.input_tokens,
+                prompt_tokens: msg_resp.usage.input_tokens
+                    + msg_resp.usage.cache_read_input_tokens
+                    + msg_resp.usage.cache_creation_input_tokens,
                 completion_tokens: msg_resp.usage.output_tokens,
             },
         })
@@ -303,18 +348,11 @@ impl LlmProvider for AnthropicProvider {
         let system = messages
             .iter()
             .find(|m| m.role == "system")
-            .and_then(|m| m.content.clone());
+            .and_then(|m| m.content.as_ref())
+            .map(|text| Self::build_cached_system(text));
 
         let api_messages = self.convert_messages(messages);
-
-        let api_tools: Vec<AnthropicTool> = tools
-            .iter()
-            .map(|t| AnthropicTool {
-                name: t.name.clone(),
-                description: t.description.clone(),
-                input_schema: t.parameters.clone(),
-            })
-            .collect();
+        let api_tools = Self::build_cached_tools(tools);
 
         // Build request body with stream: true
         let mut body = serde_json::json!({
@@ -324,7 +362,7 @@ impl LlmProvider for AnthropicProvider {
             "messages": serde_json::to_value(&api_messages)?,
         });
         if let Some(sys) = system {
-            body["system"] = serde_json::Value::String(sys);
+            body["system"] = sys;
         }
         if !api_tools.is_empty() {
             body["tools"] = serde_json::to_value(&api_tools)?;
@@ -335,6 +373,7 @@ impl LlmProvider for AnthropicProvider {
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_API_VERSION)
+            .header("anthropic-beta", ANTHROPIC_BETA_FEATURES)
             .json(&body)
             .send()
             .await
@@ -731,5 +770,60 @@ mod tests {
             }
             _ => panic!("Expected Blocks content for message with images"),
         }
+    }
+
+    #[test]
+    fn test_build_cached_system() {
+        let result = AnthropicProvider::build_cached_system("You are a helpful assistant.");
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[0]["text"], "You are a helpful assistant.");
+        assert_eq!(arr[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_build_cached_tools_marks_last() {
+        let tools = vec![
+            ToolDefinition {
+                name: "Read".into(),
+                description: "Read a file".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            ToolDefinition {
+                name: "Write".into(),
+                description: "Write a file".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let cached = AnthropicProvider::build_cached_tools(&tools);
+        assert_eq!(cached.len(), 2);
+
+        // First tool: no cache_control
+        assert!(cached[0].get("cache_control").is_none());
+        assert_eq!(cached[0]["name"], "Read");
+
+        // Last tool: has cache_control
+        assert_eq!(cached[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(cached[1]["name"], "Write");
+    }
+
+    #[test]
+    fn test_build_cached_tools_empty() {
+        let cached = AnthropicProvider::build_cached_tools(&[]);
+        assert!(cached.is_empty());
+    }
+
+    #[test]
+    fn test_build_cached_tools_single() {
+        let tools = vec![ToolDefinition {
+            name: "Bash".into(),
+            description: "Run a command".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        }];
+        let cached = AnthropicProvider::build_cached_tools(&tools);
+        assert_eq!(cached.len(), 1);
+        // Single tool should have cache_control (it's both first and last)
+        assert_eq!(cached[0]["cache_control"]["type"], "ephemeral");
     }
 }

@@ -168,7 +168,12 @@ via an interactive `/add_model` command.
 
 ---
 
-### 2.8. Prompt Caching (Anthropic)
+### 2.8. Prompt Caching (Anthropic) ✅
+
+**Status:** Implemented. System prompt and tool definitions are sent with
+`cache_control: {type: "ephemeral"}` markers. Anthropic caches the static
+prefix (~3,500–4,500 tokens) and serves it at 90% lower cost on subsequent
+calls. Cache stats logged at debug level. Beta header included.
 
 **Effort:** Medium.
 
