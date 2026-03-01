@@ -326,7 +326,21 @@ screenshots, and workflow recording.
 
 ---
 
-### 3.7. Specialized Reviewer Agents
+### 3.7. ~~Specialized Reviewer Agents~~ ✅
+
+**Status:** Implemented. Four pre-built agents ship with Koda:
+
+- **`reviewer`** — Critical code reviewer (bugs, patterns, design issues).
+  Read-only tools. Severity-tagged output (🔴 Bug, 🟡 Warning, 🔵 Suggestion).
+- **`security`** — Paranoid security auditor (OWASP, CVEs, secrets, injection).
+  CWE-tagged findings. Executive risk summary.
+- **`testgen`** — QA engineer and test writer. Finds coverage gaps,
+  writes actual test code. Full tool access to create test files.
+- **`releaser`** — Release engineer for GitHub releases. Exact workflow:
+  tests → version bump → changelog → commit → tag → push → `gh release`.
+
+Language-specific reviewers (Python, Rust, JS/TS) were skipped —
+the general reviewer handles multiple languages well enough.
 
 **Effort:** Medium per agent.
 
