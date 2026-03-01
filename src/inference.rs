@@ -332,83 +332,169 @@ pub async fn inference_loop(
         total_completion_tokens += usage.completion_tokens;
         total_char_count += char_count;
 
-        // Execute tool calls
-        for tc in &tool_calls {
-            // Check for interrupt before each tool
-            if interrupt::is_interrupted() {
-                println!("\n  \x1b[33m\u{26a0} Interrupted\x1b[0m");
-                interrupt::clear();
-                return Ok(());
-            }
-
-            // Parse args once for display, confirmation, and execution
-            let parsed_args: serde_json::Value =
-                serde_json::from_str(&tc.arguments).unwrap_or_default();
-
-            display::print_tool_call(tc, false);
-
-            // Check if this tool needs user confirmation
-            // (includes custom tools which execute shell commands)
-            if confirm::needs_confirmation_with_project(&tc.function_name, project_root) {
-                let detail = confirm::describe_action(&tc.function_name, &parsed_args);
-
-                match confirm::confirm_tool_action(&tc.function_name, &detail) {
-                    Confirmation::Approved => {}
-                    Confirmation::Rejected => {
-                        db.insert_message(
-                            session_id,
-                            &Role::Tool,
-                            Some("User rejected this action."),
-                            None,
-                            Some(&tc.id),
-                            None,
-                            None,
-                        )
-                        .await?;
-                        continue;
-                    }
-                    Confirmation::RejectedWithFeedback(feedback) => {
-                        let result = format!("User rejected this action with feedback: {feedback}");
-                        db.insert_message(
-                            session_id,
-                            &Role::Tool,
-                            Some(&result),
-                            None,
-                            Some(&tc.id),
-                            None,
-                            None,
-                        )
-                        .await?;
-                        continue;
-                    }
-                }
-            }
-
-            let result = if tc.function_name == "InvokeAgent" {
-                match execute_sub_agent(project_root, config, db, &tc.arguments).await {
-                    Ok(output) => output,
-                    Err(e) => format!("Error invoking sub-agent: {e}"),
-                }
-            } else {
-                let r = tools.execute(&tc.function_name, &tc.arguments).await;
-                r.output
-            };
-            display::print_tool_output(&tc.function_name, &result);
-
-            db.insert_message(
-                session_id,
-                &Role::Tool,
-                Some(&result),
-                None,
-                Some(&tc.id),
-                None,
-                None,
+        // Execute tool calls — parallelize when possible
+        if tool_calls.len() > 1 && can_parallelize(&tool_calls, project_root) {
+            execute_tools_parallel(
+                &tool_calls, project_root, config, db, session_id, tools,
+            )
+            .await?;
+        } else {
+            execute_tools_sequential(
+                &tool_calls, project_root, config, db, session_id, tools,
             )
             .await?;
         }
 
         iteration += 1;
     }
+}
+
+// ── Parallel tool execution ───────────────────────────────────
+
+/// Check if all tool calls in a batch can safely run in parallel.
+/// Returns true when NONE of them need user confirmation.
+fn can_parallelize(tool_calls: &[ToolCall], project_root: &Path) -> bool {
+    !tool_calls
+        .iter()
+        .any(|tc| confirm::needs_confirmation_with_project(&tc.function_name, project_root))
+}
+
+/// Execute a single tool call, returning (tool_call_id, result).
+async fn execute_one_tool(
+    tc: &ToolCall,
+    project_root: &Path,
+    config: &KodaConfig,
+    db: &Database,
+    tools: &crate::tools::ToolRegistry,
+) -> (String, String) {
+    let result = if tc.function_name == "InvokeAgent" {
+        match execute_sub_agent(project_root, config, db, &tc.arguments).await {
+            Ok(output) => output,
+            Err(e) => format!("Error invoking sub-agent: {e}"),
+        }
+    } else {
+        let r = tools.execute(&tc.function_name, &tc.arguments).await;
+        r.output
+    };
+    (tc.id.clone(), result)
+}
+
+/// Run multiple tool calls concurrently and store results.
+async fn execute_tools_parallel(
+    tool_calls: &[ToolCall],
+    project_root: &Path,
+    config: &KodaConfig,
+    db: &Database,
+    session_id: &str,
+    tools: &crate::tools::ToolRegistry,
+) -> Result<()> {
+    // Print all tool call banners upfront
+    for tc in tool_calls {
+        display::print_tool_call(tc, false);
+    }
+
+    let count = tool_calls.len();
+    println!(
+        "\n  \x1b[36m\u{1f43b} Running {count} tools in parallel...\x1b[0m"
+    );
+
+    // Launch all tool calls concurrently
+    let futures: Vec<_> = tool_calls
+        .iter()
+        .map(|tc| execute_one_tool(tc, project_root, config, db, tools))
+        .collect();
+    let results = futures_util::future::join_all(futures).await;
+
+    // Store results and display output (in original order)
+    for (i, (tc_id, result)) in results.into_iter().enumerate() {
+        display::print_tool_output(&tool_calls[i].function_name, &result);
+        db.insert_message(
+            session_id,
+            &Role::Tool,
+            Some(&result),
+            None,
+            Some(&tc_id),
+            None,
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Run tool calls one at a time (when confirmation is needed, or single call).
+async fn execute_tools_sequential(
+    tool_calls: &[ToolCall],
+    project_root: &Path,
+    config: &KodaConfig,
+    db: &Database,
+    session_id: &str,
+    tools: &crate::tools::ToolRegistry,
+) -> Result<()> {
+    for tc in tool_calls {
+        // Check for interrupt before each tool
+        if interrupt::is_interrupted() {
+            println!("\n  \x1b[33m\u{26a0} Interrupted\x1b[0m");
+            interrupt::clear();
+            return Ok(());
+        }
+
+        let parsed_args: serde_json::Value =
+            serde_json::from_str(&tc.arguments).unwrap_or_default();
+
+        display::print_tool_call(tc, false);
+
+        // Check if this tool needs user confirmation
+        if confirm::needs_confirmation_with_project(&tc.function_name, project_root) {
+            let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+
+            match confirm::confirm_tool_action(&tc.function_name, &detail) {
+                Confirmation::Approved => {}
+                Confirmation::Rejected => {
+                    db.insert_message(
+                        session_id,
+                        &Role::Tool,
+                        Some("User rejected this action."),
+                        None,
+                        Some(&tc.id),
+                        None,
+                        None,
+                    )
+                    .await?;
+                    continue;
+                }
+                Confirmation::RejectedWithFeedback(feedback) => {
+                    let result = format!("User rejected this action with feedback: {feedback}");
+                    db.insert_message(
+                        session_id,
+                        &Role::Tool,
+                        Some(&result),
+                        None,
+                        Some(&tc.id),
+                        None,
+                        None,
+                    )
+                    .await?;
+                    continue;
+                }
+            }
+        }
+
+        let (_, result) = execute_one_tool(tc, project_root, config, db, tools).await;
+        display::print_tool_output(&tc.function_name, &result);
+
+        db.insert_message(
+            session_id,
+            &Role::Tool,
+            Some(&result),
+            None,
+            Some(&tc.id),
+            None,
+            None,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 // ── Sub-agent execution ───────────────────────────────────────
@@ -731,5 +817,47 @@ mod tests {
     fn test_list_available_agents_nonexistent_dir() {
         let agents = list_available_agents(Path::new("/nonexistent/path"));
         assert!(agents.is_empty());
+    }
+
+    #[test]
+    fn test_can_parallelize_read_only() {
+        let dir = TempDir::new().unwrap();
+        let calls = vec![
+            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
+            ToolCall { id: "2".into(), function_name: "Grep".into(), arguments: "{}".into() },
+            ToolCall { id: "3".into(), function_name: "List".into(), arguments: "{}".into() },
+        ];
+        assert!(can_parallelize(&calls, dir.path()));
+    }
+
+    #[test]
+    fn test_can_parallelize_with_write_is_false() {
+        let dir = TempDir::new().unwrap();
+        let calls = vec![
+            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
+            ToolCall { id: "2".into(), function_name: "Write".into(), arguments: "{}".into() },
+        ];
+        assert!(!can_parallelize(&calls, dir.path()));
+    }
+
+    #[test]
+    fn test_can_parallelize_with_bash_is_false() {
+        let dir = TempDir::new().unwrap();
+        let calls = vec![
+            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
+            ToolCall { id: "2".into(), function_name: "Bash".into(), arguments: "{}".into() },
+        ];
+        assert!(!can_parallelize(&calls, dir.path()));
+    }
+
+    #[test]
+    fn test_can_parallelize_agents_only() {
+        let dir = TempDir::new().unwrap();
+        let calls = vec![
+            ToolCall { id: "1".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
+            ToolCall { id: "2".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
+            ToolCall { id: "3".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
+        ];
+        assert!(can_parallelize(&calls, dir.path()));
     }
 }

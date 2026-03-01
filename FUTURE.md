@@ -278,13 +278,36 @@ instance via IPC/WebSocket. Show Koda in a panel, share editor context.
 
 ### 3.5. Agent Teams — Parallel Multi-Agent Execution
 
-**Effort:** Large.
+**Phase 1: Parallel tool execution ✅**
 
-**What:** Run multiple agents in parallel on different tasks, optionally
-with git worktree isolation so they don't conflict.
+Implemented. When the LLM returns multiple tool calls in one response
+and none require user confirmation, they run concurrently via
+`futures::join_all`. This covers the primary use case: parallel
+read-only agents (code review + QA + security audit simultaneously).
 
-**Current state:** Koda supports sequential sub-agent delegation via
-`InvokeAgent`. Teams would add parallel execution.
+- `can_parallelize()` checks if any tool needs confirmation
+- Safe tools (Read, Grep, List, InvokeAgent, etc.) run in parallel
+- Confirmation-required tools (Write, Edit, Delete, Bash) force sequential
+- Results stored in original order for deterministic conversation flow
+
+**Phase 2: Git worktree isolation (Future)**
+
+**Effort:** Large. Only needed for parallel WRITE operations.
+
+When multiple agents need to modify files simultaneously, each agent
+would get its own git worktree (a separate checkout of the same repo)
+to prevent conflicts. After all agents complete, branches are merged.
+
+Scope:
+- Create/cleanup worktrees per agent (`git worktree add/remove`)
+- Each agent gets a separate `project_root` and `ToolRegistry`
+- Automatic branch creation per agent task
+- Post-completion merge with conflict detection
+- Conflict resolution: show user the diff and let them/LLM decide
+- Handle edge cases: dirty working tree, submodules, shallow clones
+
+Prerequisites: Real usage patterns showing demand for parallel writes.
+Phase 1 covers ~90% of parallel agent use cases.
 
 **Reference:** Claude Code has agent teams with worktree isolation.
 Code Puppy has a "pack" system (bloodhound, husky, retriever, etc.).
