@@ -8,6 +8,9 @@ use crate::inference;
 use crate::input::{self, KodaHelper};
 use crate::memory;
 use crate::providers::LlmProvider;
+
+/// Auto-compact threshold: when context usage exceeds this %, compact automatically.
+const AUTO_COMPACT_THRESHOLD: usize = 80;
 use crate::providers::anthropic::AnthropicProvider;
 use crate::providers::openai_compat::OpenAiCompatProvider;
 use crate::repl::{self, ReplAction};
@@ -307,7 +310,7 @@ pub async fn run(
                     continue;
                 }
                 ReplAction::Compact => {
-                    handle_compact(&db, &session_id, &config, &provider).await;
+                    handle_compact(&db, &session_id, &config, &provider, false).await;
                     continue;
                 }
                 ReplAction::Handled => continue,
@@ -368,6 +371,14 @@ pub async fn run(
             pending_images,
         )
         .await?;
+
+        // Auto-compact when context window gets crowded
+        let ctx_pct = crate::context::percentage();
+        if ctx_pct >= AUTO_COMPACT_THRESHOLD {
+            println!();
+            println!("  \x1b[36m\u{1f43b} Context at {ctx_pct}% — auto-compacting...\x1b[0m");
+            handle_compact(&db, &session_id, &config, &provider, true).await;
+        }
     }
 
     if let Some(parent) = history_path.parent() {
@@ -380,11 +391,14 @@ pub async fn run(
 
 // ── Compact handler ───────────────────────────────────────────
 
+/// Compact the conversation by summarizing history via the LLM.
+/// When `silent` is true (auto-compact), suppresses the "too short" message.
 async fn handle_compact(
     db: &Database,
     session_id: &str,
     config: &KodaConfig,
     provider: &Arc<RwLock<Box<dyn LlmProvider>>>,
+    silent: bool,
 ) {
     use crate::providers::ChatMessage;
 
@@ -392,13 +406,17 @@ async fn handle_compact(
     let history = match db.load_context(session_id, config.max_context_tokens).await {
         Ok(msgs) => msgs,
         Err(e) => {
-            println!("  \x1b[31mError loading conversation: {e}\x1b[0m");
+            if !silent {
+                println!("  \x1b[31mError loading conversation: {e}\x1b[0m");
+            }
             return;
         }
     };
 
     if history.len() < 4 {
-        println!("  \x1b[90mConversation is too short to compact ({} messages).\x1b[0m", history.len());
+        if !silent {
+            println!("  \x1b[90mConversation is too short to compact ({} messages).\x1b[0m", history.len());
+        }
         return;
     }
 
