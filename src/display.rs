@@ -199,7 +199,7 @@ pub fn print_sub_agent_start(agent_name: &str) {
     println!("\n{RUBY}●{RESET} {BOLD}Agent{RESET} {DIM}Delegating → {agent_name}{RESET}");
 }
 
-/// Print the THINKING indicator (for <think> blocks from reasoning models).
+/// Print the THINKING indicator (for `<think>` blocks from reasoning models).
 pub fn print_thinking_banner() {
     println!("\n{VIOLET}\u{1f36f}{RESET} {BOLD}Thinking{RESET} {DIM}⚡{RESET}");
 }

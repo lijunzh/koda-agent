@@ -382,7 +382,7 @@ fn truncate_visible(s: &str, max: usize) -> String {
     }
 }
 
-/// Format the REPL prompt: [Koda 🐻] [model] (~/repo) ❯
+/// Format the REPL prompt: `[Koda 🐻] [model] (~/repo) ❯`
 /// Shows a context warning when usage exceeds 75%.
 pub fn format_prompt(model: &str) -> String {
     let cwd = pretty_cwd();
