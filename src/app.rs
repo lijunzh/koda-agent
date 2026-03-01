@@ -192,6 +192,7 @@ pub async fn run(
                     let commands = [
                         ("/copy", "Copy last response or code block"),
                         ("/cost", "Show token usage for this session"),
+                        ("/diff", "Show git diff / review / commit message"),
                         ("/memory", "View/save project & global memory"),
                         ("/model", "Pick a model interactively"),
                         ("/paste", "Show clipboard contents"),
@@ -297,6 +298,11 @@ pub async fn run(
                             Err(e) => println!("  \x1b[31mError: {e}\x1b[0m"),
                         }
                     }
+                    continue;
+                }
+                ReplAction::InjectPrompt(prompt) => {
+                    // Treat injected prompt as user input (used by /diff review, /diff commit)
+                    pending_command = Some(prompt);
                     continue;
                 }
                 ReplAction::Handled => continue,

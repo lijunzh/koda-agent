@@ -19,6 +19,8 @@ mod repl_commands {
             "/proxy" => "Handled_or_RecreateProvider",
             "/help" => "ShowHelp",
             "/cost" => "ShowCost",
+            "/diff" if parts.len() > 1 => "InjectPrompt_or_Handled",
+            "/diff" => "Handled",
             "/sessions" if parts.len() > 1 && parts[1].starts_with("delete ") => "DeleteSession",
             "/sessions" => "ListSessions",
             "/memory" => "Handled",
@@ -45,6 +47,9 @@ mod repl_commands {
         assert_eq!(dispatch("/provider openai"), "SetupProvider");
         assert_eq!(dispatch("/help"), "ShowHelp");
         assert_eq!(dispatch("/cost"), "ShowCost");
+        assert_eq!(dispatch("/diff"), "Handled");
+        assert_eq!(dispatch("/diff review"), "InjectPrompt_or_Handled");
+        assert_eq!(dispatch("/diff commit"), "InjectPrompt_or_Handled");
         assert_eq!(dispatch("/sessions"), "ListSessions");
         assert_eq!(dispatch("/sessions delete abc123"), "DeleteSession");
         assert_eq!(dispatch("/memory"), "Handled");
@@ -158,6 +163,7 @@ mod completions {
     const EXPECTED_COMMANDS: &[&str] = &[
         "/copy",
         "/cost",
+        "/diff",
         "/help",
         "/memory",
         "/model",
@@ -173,7 +179,7 @@ mod completions {
 
     #[test]
     fn test_expected_commands_present() {
-        assert_eq!(EXPECTED_COMMANDS.len(), 10, "Expected 10 slash commands");
+        assert_eq!(EXPECTED_COMMANDS.len(), 11, "Expected 11 slash commands");
         for cmd in EXPECTED_COMMANDS {
             assert!(
                 EXPECTED_COMMANDS.contains(cmd),

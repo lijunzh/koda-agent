@@ -20,6 +20,8 @@ pub enum ReplAction {
     ShowCost,
     ListSessions,
     DeleteSession(String),
+    /// Inject text as if the user typed it (used by /diff review, /diff commit)
+    InjectPrompt(String),
     Handled,
     NotACommand,
 }
@@ -191,6 +193,79 @@ pub async fn handle_command(
         "/help" => ReplAction::ShowHelp,
 
         "/cost" => ReplAction::ShowCost,
+
+        "/diff" => {
+            // Run git diff
+            let output = std::process::Command::new("git")
+                .args(["diff", "--stat"])
+                .output();
+
+            let diff_stat = match output {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+                Ok(o) => {
+                    let err = String::from_utf8_lossy(&o.stderr);
+                    println!("  \x1b[31mGit error: {err}\x1b[0m");
+                    return ReplAction::Handled;
+                }
+                Err(e) => {
+                    println!("  \x1b[31mFailed to run git: {e}\x1b[0m");
+                    return ReplAction::Handled;
+                }
+            };
+
+            if diff_stat.trim().is_empty() {
+                // Try staged changes
+                let staged = std::process::Command::new("git")
+                    .args(["diff", "--cached", "--stat"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        if o.status.success() {
+                            let s = String::from_utf8_lossy(&o.stdout).to_string();
+                            if s.trim().is_empty() { None } else { Some(s) }
+                        } else {
+                            None
+                        }
+                    });
+
+                if staged.is_none() {
+                    println!("  \x1b[90mNo uncommitted changes.\x1b[0m");
+                    return ReplAction::Handled;
+                }
+            }
+
+            match arg {
+                Some("review") => {
+                    // Get full diff for LLM review
+                    let full_diff = get_git_diff();
+                    ReplAction::InjectPrompt(format!(
+                        "Review these uncommitted changes. Point out bugs, improvements, and concerns:\n\n```diff\n{full_diff}\n```"
+                    ))
+                }
+                Some("commit") => {
+                    // Get full diff for commit message generation
+                    let full_diff = get_git_diff();
+                    ReplAction::InjectPrompt(format!(
+                        "Write a conventional commit message for these changes. Use the format: type: description\n\nInclude a body with bullet points for each logical change.\n\n```diff\n{full_diff}\n```"
+                    ))
+                }
+                _ => {
+                    // Just show the summary
+                    println!();
+                    println!("  \x1b[1m\u{1f43b} Uncommitted Changes\x1b[0m");
+                    println!();
+                    for line in diff_stat.lines() {
+                        println!("  \x1b[90m{line}\x1b[0m");
+                    }
+                    println!();
+                    println!(
+                        "  \x1b[90m/diff review   \u{2014} ask Koda to review the changes\x1b[0m"
+                    );
+                    println!("  \x1b[90m/diff commit   \u{2014} generate a commit message\x1b[0m");
+                    ReplAction::Handled
+                }
+            }
+        }
 
         "/sessions" => match arg {
             Some(sub) if sub.starts_with("delete ") => {
@@ -410,4 +485,51 @@ fn pretty_cwd() -> String {
             .to_string();
     }
     cwd.display().to_string()
+}
+
+/// Get the full git diff (unstaged + staged), capped for context window safety.
+fn get_git_diff() -> String {
+    const MAX_DIFF_CHARS: usize = 30_000;
+
+    let unstaged = std::process::Command::new("git")
+        .args(["diff"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    let staged = std::process::Command::new("git")
+        .args(["diff", "--cached"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    let mut diff = String::new();
+    if !unstaged.is_empty() {
+        diff.push_str(&unstaged);
+    }
+    if !staged.is_empty() {
+        if !diff.is_empty() {
+            diff.push_str("\n# --- Staged changes ---\n\n");
+        }
+        diff.push_str(&staged);
+    }
+
+    if diff.len() > MAX_DIFF_CHARS {
+        let mut end = MAX_DIFF_CHARS;
+        while end > 0 && !diff.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!(
+            "{}\n\n[TRUNCATED: diff was {} chars, showing first {}]",
+            &diff[..end],
+            diff.len(),
+            MAX_DIFF_CHARS
+        )
+    } else {
+        diff
+    }
 }

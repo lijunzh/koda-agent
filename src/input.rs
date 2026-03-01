@@ -15,6 +15,10 @@ use std::path::{Path, PathBuf};
 const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/copy", "Copy last response or code block"),
     ("/cost", "Show token usage for this session"),
+    (
+        "/diff",
+        "Show git diff, review changes, or generate commit msg",
+    ),
     ("/help", "Command palette"),
     ("/memory", "View/save project & global memory"),
     ("/model", "Pick a model interactively"),
