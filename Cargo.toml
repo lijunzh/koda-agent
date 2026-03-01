@@ -78,7 +78,7 @@ ctrlc = "3"
 async-trait = "0.1"
 
 # For reading user input
-rustyline = "15"
+rustyline = "17"
 
 [dev-dependencies]
 tempfile = "3"
