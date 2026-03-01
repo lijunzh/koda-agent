@@ -33,7 +33,7 @@ toml = "0.8"
 
 # TUI / UX
 indicatif = "0.17"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Logging
 tracing = "0.1"
