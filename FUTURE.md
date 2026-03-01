@@ -110,7 +110,10 @@ the LLM to review them, suggest improvements, or write commit messages.
 
 ---
 
-### 2.4. Notebook Support (Jupyter)
+### 2.4. ~~Notebook Support (Jupyter)~~ (Skipped)
+
+**Status:** Skipped. Low priority for a CLI-first coding agent. Users who
+need notebook editing have better tools (JupyterLab, VS Code).
 
 **Effort:** Medium.
 
@@ -161,7 +164,11 @@ with multiple-choice options, rendered as an arrow-key selector.
 
 ---
 
-### 2.7. Model Marketplace Integration
+### 2.7. ~~Model Marketplace Integration~~ (Skipped)
+
+**Status:** Skipped. Koda already supports 6 providers, and any OpenAI-compatible
+endpoint works via `--base-url`. Developers know what model they want. Claude Code
+doesn't have this either. Adding new providers is a 5-line code change, not a feature.
 
 **Effort:** Medium.
 
