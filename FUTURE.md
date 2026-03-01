@@ -146,7 +146,11 @@ pipelines, scripts, and editor integrations.
 
 ---
 
-### 2.6. Ask User Question — Interactive Multi-Choice TUI
+### 2.6. ~~Ask User Question — Interactive Multi-Choice TUI~~ (Skipped)
+
+**Status:** Skipped. Claude Code — the most capable coding agent — doesn't
+have this. The LLM already asks questions in plain text and parses freeform
+responses just fine. YAGNI.
 
 **Effort:** Medium.
 
