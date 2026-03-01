@@ -599,4 +599,48 @@ mod tests {
         assert_eq!(completion, 0);
         assert_eq!(turns, 0);
     }
+
+    #[tokio::test]
+    async fn test_last_assistant_message() {
+        let (db, _tmp) = setup().await;
+        let session = db.create_session("default").await.unwrap();
+
+        // Empty session returns empty string
+        let msg = db.last_assistant_message(&session).await.unwrap();
+        assert_eq!(msg, "");
+
+        // Insert some messages
+        db.insert_message(&session, &Role::User, Some("question 1"), None, None, None, None)
+            .await.unwrap();
+        db.insert_message(&session, &Role::Assistant, Some("answer 1"), None, None, None, None)
+            .await.unwrap();
+        db.insert_message(&session, &Role::User, Some("question 2"), None, None, None, None)
+            .await.unwrap();
+        db.insert_message(&session, &Role::Assistant, Some("answer 2"), None, None, None, None)
+            .await.unwrap();
+
+        // Should return the LAST assistant message
+        let msg = db.last_assistant_message(&session).await.unwrap();
+        assert_eq!(msg, "answer 2");
+    }
+
+    #[tokio::test]
+    async fn test_last_assistant_message_skips_tool_calls() {
+        let (db, _tmp) = setup().await;
+        let session = db.create_session("default").await.unwrap();
+
+        db.insert_message(&session, &Role::User, Some("do something"), None, None, None, None)
+            .await.unwrap();
+        // Assistant with tool calls but no text content
+        db.insert_message(&session, &Role::Assistant, None, Some("[{\"id\":\"1\"}]"), None, None, None)
+            .await.unwrap();
+        db.insert_message(&session, &Role::Tool, Some("tool result"), None, Some("1"), None, None)
+            .await.unwrap();
+        // Final text response
+        db.insert_message(&session, &Role::Assistant, Some("Done!"), None, None, None, None)
+            .await.unwrap();
+
+        let msg = db.last_assistant_message(&session).await.unwrap();
+        assert_eq!(msg, "Done!");
+    }
 }

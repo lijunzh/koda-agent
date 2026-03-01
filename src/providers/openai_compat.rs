@@ -467,3 +467,86 @@ struct ModelEntry {
     id: String,
     owned_by: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::{ChatMessage, ImageData};
+
+    #[test]
+    fn test_build_request_plain_text() {
+        let messages = vec![ChatMessage::text("user", "hello")];
+        let request = OpenAiCompatProvider::build_request(&messages, &[], "gpt-4o", None);
+        assert_eq!(request.messages.len(), 1);
+        // Plain text should be a JSON string, not an array
+        let content = request.messages[0].content.as_ref().unwrap();
+        assert!(content.is_string(), "Expected string content, got: {content}");
+        assert_eq!(content.as_str().unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_build_request_with_images() {
+        let messages = vec![ChatMessage {
+            role: "user".into(),
+            content: Some("What is this?".into()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Some(vec![ImageData {
+                media_type: "image/png".into(),
+                base64: "iVBORw0KGgo=".into(),
+            }]),
+        }];
+        let request = OpenAiCompatProvider::build_request(&messages, &[], "gpt-4o", None);
+        let content = request.messages[0].content.as_ref().unwrap();
+
+        // Should be an array with text + image_url parts
+        assert!(content.is_array(), "Expected array content for images, got: {content}");
+        let parts = content.as_array().unwrap();
+        assert_eq!(parts.len(), 2);
+
+        // First part: text
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[0]["text"], "What is this?");
+
+        // Second part: image_url with data URI
+        assert_eq!(parts[1]["type"], "image_url");
+        let url = parts[1]["image_url"]["url"].as_str().unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+        assert!(url.contains("iVBORw0KGgo="));
+    }
+
+    #[test]
+    fn test_build_request_empty_images_stays_string() {
+        let messages = vec![ChatMessage {
+            role: "user".into(),
+            content: Some("hello".into()),
+            tool_calls: None,
+            tool_call_id: None,
+            images: Some(vec![]), // Empty images vec
+        }];
+        let request = OpenAiCompatProvider::build_request(&messages, &[], "gpt-4o", None);
+        let content = request.messages[0].content.as_ref().unwrap();
+        // Empty images should NOT produce an array, just a string
+        assert!(content.is_string(), "Empty images should produce string content");
+    }
+
+    #[test]
+    fn test_build_request_tool_calls_preserved() {
+        let messages = vec![ChatMessage {
+            role: "assistant".into(),
+            content: None,
+            tool_calls: Some(vec![crate::providers::ToolCall {
+                id: "tc_1".into(),
+                function_name: "Read".into(),
+                arguments: r#"{"path":"main.rs"}"#.into(),
+            }]),
+            tool_call_id: None,
+            images: None,
+        }];
+        let request = OpenAiCompatProvider::build_request(&messages, &[], "gpt-4o", None);
+        assert!(request.messages[0].tool_calls.is_some());
+        let tcs = request.messages[0].tool_calls.as_ref().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0].function.name, "Read");
+    }
+}

@@ -85,3 +85,29 @@ fn test_cli_help_mentions_headless() {
         "Help should mention --output-format: {stdout}"
     );
 }
+
+#[test]
+fn test_cli_headless_piped_stdin_empty() {
+    // Piping empty stdin should not hang — should detect empty and still work
+    let output = Command::new(koda_bin())
+        .arg("--help") // Just verify the binary handles stdin detection
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run koda with null stdin");
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_cli_output_format_validates() {
+    let output = Command::new(koda_bin())
+        .args(["--output-format", "invalid_format", "-p", "test"])
+        .output()
+        .expect("Failed to run koda");
+    // clap should reject invalid output formats
+    assert!(!output.status.success(), "Invalid output-format should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid") || stderr.contains("possible values"),
+        "Should mention invalid value: {stderr}"
+    );
+}

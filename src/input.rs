@@ -768,4 +768,36 @@ mod tests {
         assert!(result.prompt.contains("data.json"));
         assert!(result.images.is_empty());
     }
+
+    #[test]
+    fn test_resolve_bare_path_absolute() {
+        let resolved = resolve_bare_path("/tmp/test.png");
+        assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+    }
+
+    #[test]
+    fn test_resolve_bare_path_home() {
+        // Only works if HOME is set, which it always is in tests
+        if std::env::var("HOME").is_ok() {
+            let resolved = resolve_bare_path("~/test.png");
+            assert!(resolved.is_some());
+            let path = resolved.unwrap();
+            assert!(!path.to_string_lossy().contains('~'));
+            assert!(path.to_string_lossy().ends_with("test.png"));
+        }
+    }
+
+    #[test]
+    fn test_resolve_bare_path_quoted() {
+        let resolved = resolve_bare_path("'/tmp/test.png'");
+        assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+    }
+
+    #[test]
+    fn test_resolve_bare_path_relative() {
+        let resolved = resolve_bare_path("./test.png");
+        assert!(resolved.is_some());
+        // Should be resolved to an absolute path via cwd
+        assert!(resolved.unwrap().is_absolute());
+    }
 }
