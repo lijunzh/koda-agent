@@ -32,7 +32,7 @@ serde_json = "1"
 toml = "0.8"
 
 # TUI / UX
-indicatif = "0.17"
+indicatif = "0.18"
 crossterm = "0.28"
 
 # Logging
