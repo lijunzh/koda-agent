@@ -193,6 +193,7 @@ pub async fn run(
                 }
                 ReplAction::ShowHelp => {
                     let commands = [
+                        ("/agent", "List available sub-agents"),
                         ("/compact", "Summarize conversation to reclaim context"),
                         ("/copy", "Copy last response or code block"),
                         ("/cost", "Show token usage for this session"),

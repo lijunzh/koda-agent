@@ -20,6 +20,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
         "/diff",
         "Show git diff, review changes, or generate commit msg",
     ),
+    ("/agent", "List available sub-agents"),
     ("/compact", "Summarize conversation to reclaim context"),
     ("/help", "Command palette"),
     ("/memory", "View/save project & global memory"),

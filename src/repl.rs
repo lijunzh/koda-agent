@@ -271,6 +271,21 @@ pub async fn handle_command(
 
         "/compact" => ReplAction::Compact,
 
+        "/agent" => {
+            let project_root = std::env::current_dir().unwrap_or_default();
+            let listing = crate::tools::agent::list_agents(&project_root);
+            println!();
+            println!("  \x1b[1m\u{1f43b} Agents\x1b[0m");
+            println!();
+            for line in listing.lines() {
+                println!("  {line}");
+            }
+            println!();
+            println!("  \x1b[90mCreate agents by adding JSON files to agents/\x1b[0m");
+            println!("  \x1b[90mThe LLM can invoke them via InvokeAgent tool.\x1b[0m");
+            ReplAction::Handled
+        }
+
         "/sessions" => match arg {
             Some(sub) if sub.starts_with("delete ") => {
                 let id = sub.strip_prefix("delete ").unwrap().trim().to_string();

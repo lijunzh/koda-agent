@@ -27,6 +27,7 @@ mod repl_commands {
             "/copy" => "Handled",
             "/paste" => "Handled",
             "/compact" => "Compact",
+            "/agent" => "Handled",
             _ => "NotACommand",
         }
     }
@@ -61,6 +62,7 @@ mod repl_commands {
         assert_eq!(dispatch("/copy all"), "Handled");
         assert_eq!(dispatch("/paste"), "Handled");
         assert_eq!(dispatch("/compact"), "Compact");
+        assert_eq!(dispatch("/agent"), "Handled");
     }
 
     #[test]
@@ -163,6 +165,7 @@ mod input_processing {
 mod completions {
     /// The slash commands that should appear in tab completion.
     const EXPECTED_COMMANDS: &[&str] = &[
+        "/agent",
         "/compact",
         "/copy",
         "/cost",
@@ -182,7 +185,7 @@ mod completions {
 
     #[test]
     fn test_expected_commands_present() {
-        assert_eq!(EXPECTED_COMMANDS.len(), 12, "Expected 12 slash commands");
+        assert_eq!(EXPECTED_COMMANDS.len(), 13, "Expected 13 slash commands");
         for cmd in EXPECTED_COMMANDS {
             assert!(
                 EXPECTED_COMMANDS.contains(cmd),
