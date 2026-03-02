@@ -102,6 +102,7 @@ All tools use **PascalCase** names (inspired by Claude Code):
 | `MemoryWrite` | `memory` | Save insights to persistent memory |
 | `InvokeAgent` | `agent` | Delegate to a sub-agent |
 | `ListAgents` | `agent` | List available sub-agents |
+| `CreateAgent` | `agent` | Create a new sub-agent (with validation) |
 | `CreateTool` | `constructor` | Define a new custom tool |
 | `ListTools` | `constructor` | List custom tools |
 | `DeleteTool` | `constructor` | Remove a custom tool |
@@ -122,7 +123,7 @@ Each tool has a semantic color and short label shown during execution:
 | Search | Silver | `Grep`, `Glob`, `TodoRead`, `ListTools` |
 | Execute | Orange | `Bash` |
 | Danger | Crimson | `Delete`, `DeleteTool` |
-| AI/meta | Violet, Ruby | `CreateTool`, `InvokeAgent` |
+| AI/meta | Violet, Ruby | `CreateTool`, `CreateAgent`, `InvokeAgent` |
 
 ### 4.4. Confirmation System
 Destructive tools require user confirmation before execution:
@@ -296,13 +297,46 @@ Tokens are rendered with full markdown formatting as they stream:
 | Tables (`\|..\|`) | Aligned columns with dim borders |
 | `---` | Dim horizontal rule |
 
-## 10. Test Coverage
+## 10. Agent Architecture
 
-277 tests across 6 suites:
+### 10.1. Built-in Agents (Compile-time Embedded)
+Five agents are embedded via `include_str!` — zero disk dependency:
+- **default** — main coding assistant
+- **reviewer** — critical code reviewer (read-only)
+- **security** — security auditor (OWASP, CWE-tagged)
+- **testgen** — QA engineer, writes tests
+- **releaser** — GitHub release workflow
+
+### 10.2. Agent Discovery (Priority Order)
+1. `<project>/agents/` — project-specific (highest priority, overrides built-ins)
+2. `~/.config/koda/agents/` — user-created (via CreateAgent tool)
+3. Built-in embedded — always available, immutable
+
+### 10.3. Parallel Tool Execution
+When the LLM returns multiple tool calls and none require user confirmation,
+they execute concurrently via `futures::join_all`. This enables parallel
+sub-agent invocation (e.g., reviewer + security + testgen simultaneously).
+
+## 11. Multi-Modal Support
+Images can be attached via `@image.png` references or drag-and-drop (bare path
+auto-detection). Images are base64-encoded in-flight (not persisted to DB) and
+sent using provider-specific formats:
+- **OpenAI**: multi-part content array with `image_url` data URIs
+- **Anthropic**: content blocks with `image` type and base64 source
+
+## 12. Context Window Management
+- **Auto-compact**: at 80% usage, the conversation is summarized via LLM
+- **Manual**: `/compact` command
+- **Sliding window**: old messages dropped as safety net
+- **Prompt caching**: Anthropic system prompt + tools cached (90% cheaper)
+
+## 13. Test Coverage
+
+288 tests across 6 suites:
 
 | Suite | Tests | Coverage |
 |-------|-------|---------|
-| Unit tests (`src/`) | 207 | display, input, markdown, highlighting, tools, DB, confirm, inference, keystore, memory, clipboard, context, version, onboarding, tui, providers, agents |
+| Unit tests (`src/`) | 218 | All 33 source modules |
 | CLI binary integration | 6 | `--version`, `--help`, invalid flags, headless flags, output-format validation, stdin handling |
 | File tools integration | 17 | Path safety, CRUD, directory deletion, List filtering |
 | New tools integration | 22 | Glob, WebFetch, Todo sections, Constructor, naming conventions |

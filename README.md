@@ -297,7 +297,7 @@ See [FUTURE.md](FUTURE.md) for the roadmap and competitive analysis.
 ## Development
 
 ```bash
-cargo test          # 277 tests across 6 suites
+cargo test          # 288 tests across 6 suites
 cargo build         # Debug build
 cargo run           # Run locally
 ```
