@@ -284,7 +284,9 @@ pub async fn handle_command(
             }
             println!();
             println!("  \x1b[90mAsk Koda to invoke them, or use koda --agent <name>\x1b[0m");
-            println!("  \x1b[90mNeed a specialist? Ask Koda to create one for recurring tasks\x1b[0m");
+            println!(
+                "  \x1b[90mNeed a specialist? Ask Koda to create one for recurring tasks\x1b[0m"
+            );
             ReplAction::Handled
         }
 

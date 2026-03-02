@@ -70,15 +70,12 @@ pub async fn inference_loop(
         }
 
         // Attach pending images to the last user message (first iteration only)
-        if iteration == 0 {
-            if let Some(ref imgs) = pending_images {
-                if !imgs.is_empty() {
-                    // Find the last user message and attach images
-                    if let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user") {
-                        last_user.images = Some(imgs.clone());
-                    }
-                }
-            }
+        if iteration == 0
+            && let Some(ref imgs) = pending_images
+            && !imgs.is_empty()
+            && let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
+        {
+            last_user.images = Some(imgs.clone());
         }
 
         // Track context window usage
@@ -334,15 +331,11 @@ pub async fn inference_loop(
 
         // Execute tool calls — parallelize when possible
         if tool_calls.len() > 1 && can_parallelize(&tool_calls, project_root) {
-            execute_tools_parallel(
-                &tool_calls, project_root, config, db, session_id, tools,
-            )
-            .await?;
+            execute_tools_parallel(&tool_calls, project_root, config, db, session_id, tools)
+                .await?;
         } else {
-            execute_tools_sequential(
-                &tool_calls, project_root, config, db, session_id, tools,
-            )
-            .await?;
+            execute_tools_sequential(&tool_calls, project_root, config, db, session_id, tools)
+                .await?;
         }
 
         iteration += 1;
@@ -394,9 +387,7 @@ async fn execute_tools_parallel(
     }
 
     let count = tool_calls.len();
-    println!(
-        "\n  \x1b[36m\u{1f43b} Running {count} tools in parallel...\x1b[0m"
-    );
+    println!("\n  \x1b[36m\u{1f43b} Running {count} tools in parallel...\x1b[0m");
 
     // Launch all tool calls concurrently
     let futures: Vec<_> = tool_calls
@@ -823,9 +814,21 @@ mod tests {
     fn test_can_parallelize_read_only() {
         let dir = TempDir::new().unwrap();
         let calls = vec![
-            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
-            ToolCall { id: "2".into(), function_name: "Grep".into(), arguments: "{}".into() },
-            ToolCall { id: "3".into(), function_name: "List".into(), arguments: "{}".into() },
+            ToolCall {
+                id: "1".into(),
+                function_name: "Read".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "2".into(),
+                function_name: "Grep".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "3".into(),
+                function_name: "List".into(),
+                arguments: "{}".into(),
+            },
         ];
         assert!(can_parallelize(&calls, dir.path()));
     }
@@ -834,8 +837,16 @@ mod tests {
     fn test_can_parallelize_with_write_is_false() {
         let dir = TempDir::new().unwrap();
         let calls = vec![
-            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
-            ToolCall { id: "2".into(), function_name: "Write".into(), arguments: "{}".into() },
+            ToolCall {
+                id: "1".into(),
+                function_name: "Read".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "2".into(),
+                function_name: "Write".into(),
+                arguments: "{}".into(),
+            },
         ];
         assert!(!can_parallelize(&calls, dir.path()));
     }
@@ -844,8 +855,16 @@ mod tests {
     fn test_can_parallelize_with_bash_is_false() {
         let dir = TempDir::new().unwrap();
         let calls = vec![
-            ToolCall { id: "1".into(), function_name: "Read".into(), arguments: "{}".into() },
-            ToolCall { id: "2".into(), function_name: "Bash".into(), arguments: "{}".into() },
+            ToolCall {
+                id: "1".into(),
+                function_name: "Read".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "2".into(),
+                function_name: "Bash".into(),
+                arguments: "{}".into(),
+            },
         ];
         assert!(!can_parallelize(&calls, dir.path()));
     }
@@ -854,9 +873,21 @@ mod tests {
     fn test_can_parallelize_agents_only() {
         let dir = TempDir::new().unwrap();
         let calls = vec![
-            ToolCall { id: "1".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
-            ToolCall { id: "2".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
-            ToolCall { id: "3".into(), function_name: "InvokeAgent".into(), arguments: "{}".into() },
+            ToolCall {
+                id: "1".into(),
+                function_name: "InvokeAgent".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "2".into(),
+                function_name: "InvokeAgent".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "3".into(),
+                function_name: "InvokeAgent".into(),
+                arguments: "{}".into(),
+            },
         ];
         assert!(can_parallelize(&calls, dir.path()));
     }

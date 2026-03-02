@@ -124,8 +124,8 @@ impl KodaConfig {
     /// Load config from the agent JSON file.
     /// Search order: project agents/ → user ~/.config/koda/agents/ → built-in (embedded).
     pub fn load(project_root: &Path, agent_name: &str) -> Result<Self> {
-        let agents_dir = Self::find_agents_dir(project_root)
-            .unwrap_or_else(|_| PathBuf::from("agents"));
+        let agents_dir =
+            Self::find_agents_dir(project_root).unwrap_or_else(|_| PathBuf::from("agents"));
 
         // 1. Try project-local or user-level agent file on disk
         let agent_file = agents_dir.join(format!("{agent_name}.json"));
@@ -265,7 +265,6 @@ impl KodaConfig {
             .unwrap_or_else(|_| PathBuf::from("."));
         Ok(home.join(".config").join("koda").join("agents"))
     }
-
 }
 
 #[cfg(test)]

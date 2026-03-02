@@ -307,12 +307,10 @@ impl Database {
         let mut tx = self.pool.begin().await?;
 
         // Count existing messages for reporting
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM messages WHERE session_id = ?",
-        )
-        .bind(session_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE session_id = ?")
+            .bind(session_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
         // Delete all existing messages
         sqlx::query("DELETE FROM messages WHERE session_id = ?")
@@ -573,20 +571,41 @@ mod tests {
 
         // Insert several messages
         for i in 0..10 {
-            let role = if i % 2 == 0 { &Role::User } else { &Role::Assistant };
-            db.insert_message(&session, role, Some(&format!("msg {i}")), None, None, None, None)
-                .await
-                .unwrap();
+            let role = if i % 2 == 0 {
+                &Role::User
+            } else {
+                &Role::Assistant
+            };
+            db.insert_message(
+                &session,
+                role,
+                Some(&format!("msg {i}")),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
         }
 
-        let deleted = db.compact_session(&session, "Summary of conversation").await.unwrap();
+        let deleted = db
+            .compact_session(&session, "Summary of conversation")
+            .await
+            .unwrap();
         assert_eq!(deleted, 10);
 
         // Should have exactly 1 message now
         let msgs = db.load_context(&session, 100_000).await.unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, "user");
-        assert!(msgs[0].content.as_ref().unwrap().contains("Summary of conversation"));
+        assert!(
+            msgs[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .contains("Summary of conversation")
+        );
     }
 
     #[tokio::test]
@@ -610,14 +629,50 @@ mod tests {
         assert_eq!(msg, "");
 
         // Insert some messages
-        db.insert_message(&session, &Role::User, Some("question 1"), None, None, None, None)
-            .await.unwrap();
-        db.insert_message(&session, &Role::Assistant, Some("answer 1"), None, None, None, None)
-            .await.unwrap();
-        db.insert_message(&session, &Role::User, Some("question 2"), None, None, None, None)
-            .await.unwrap();
-        db.insert_message(&session, &Role::Assistant, Some("answer 2"), None, None, None, None)
-            .await.unwrap();
+        db.insert_message(
+            &session,
+            &Role::User,
+            Some("question 1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        db.insert_message(
+            &session,
+            &Role::Assistant,
+            Some("answer 1"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        db.insert_message(
+            &session,
+            &Role::User,
+            Some("question 2"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        db.insert_message(
+            &session,
+            &Role::Assistant,
+            Some("answer 2"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         // Should return the LAST assistant message
         let msg = db.last_assistant_message(&session).await.unwrap();
@@ -629,16 +684,52 @@ mod tests {
         let (db, _tmp) = setup().await;
         let session = db.create_session("default").await.unwrap();
 
-        db.insert_message(&session, &Role::User, Some("do something"), None, None, None, None)
-            .await.unwrap();
+        db.insert_message(
+            &session,
+            &Role::User,
+            Some("do something"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         // Assistant with tool calls but no text content
-        db.insert_message(&session, &Role::Assistant, None, Some("[{\"id\":\"1\"}]"), None, None, None)
-            .await.unwrap();
-        db.insert_message(&session, &Role::Tool, Some("tool result"), None, Some("1"), None, None)
-            .await.unwrap();
+        db.insert_message(
+            &session,
+            &Role::Assistant,
+            None,
+            Some("[{\"id\":\"1\"}]"),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        db.insert_message(
+            &session,
+            &Role::Tool,
+            Some("tool result"),
+            None,
+            Some("1"),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         // Final text response
-        db.insert_message(&session, &Role::Assistant, Some("Done!"), None, None, None, None)
-            .await.unwrap();
+        db.insert_message(
+            &session,
+            &Role::Assistant,
+            Some("Done!"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
         let msg = db.last_assistant_message(&session).await.unwrap();
         assert_eq!(msg, "Done!");

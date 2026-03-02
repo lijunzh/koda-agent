@@ -14,7 +14,8 @@ pub fn definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "Read".to_string(),
             description: "Read the contents of a file. For large files, use start_line and \
-                num_lines to read specific portions instead of the whole file.".to_string(),
+                num_lines to read specific portions instead of the whole file."
+                .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {

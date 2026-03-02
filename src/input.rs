@@ -367,11 +367,11 @@ fn try_load_image(path: &Path, display_path: &str) -> Option<ImageData> {
 /// Resolve a bare path token to an absolute path, expanding ~ if needed.
 fn resolve_bare_path(token: &str) -> Option<PathBuf> {
     let cleaned = strip_quotes(token);
-    if cleaned.starts_with("~/") {
+    if let Some(rest) = cleaned.strip_prefix("~/") {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .ok()?;
-        Some(PathBuf::from(home).join(&cleaned[2..]))
+        Some(PathBuf::from(home).join(rest))
     } else {
         let p = PathBuf::from(cleaned);
         if p.is_absolute() {
@@ -429,15 +429,15 @@ pub fn process_input(input: &str, project_root: &Path) -> ProcessedInput {
         // ── Bare image paths (drag-and-drop) ──────────────────
         // Detect absolute/relative paths to image files pasted directly
         let unquoted = strip_quotes(token);
-        if looks_like_file_path(token) && is_image_file(unquoted) {
-            if let Some(resolved) = resolve_bare_path(token) {
-                if resolved.exists() {
-                    let display = resolved.display().to_string();
-                    if let Some(img) = try_load_image(&resolved, &display) {
-                        images.push(img);
-                        continue;
-                    }
-                }
+        if looks_like_file_path(token)
+            && is_image_file(unquoted)
+            && let Some(resolved) = resolve_bare_path(token)
+            && resolved.exists()
+        {
+            let display = resolved.display().to_string();
+            if let Some(img) = try_load_image(&resolved, &display) {
+                images.push(img);
+                continue;
             }
         }
 

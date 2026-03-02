@@ -104,7 +104,10 @@ fn test_cli_output_format_validates() {
         .output()
         .expect("Failed to run koda");
     // clap should reject invalid output formats
-    assert!(!output.status.success(), "Invalid output-format should fail");
+    assert!(
+        !output.status.success(),
+        "Invalid output-format should fail"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("invalid") || stderr.contains("possible values"),

@@ -413,12 +413,12 @@ pub async fn run_headless(
 
     // Process @file references and images (same as interactive mode)
     let processed = input::process_input(&prompt, &project_root);
-    let user_message =
-        if let Some(context) = input::format_context_files(&processed.context_files) {
-            format!("{}\n\n{context}", processed.prompt)
-        } else {
-            processed.prompt.clone()
-        };
+    let user_message = if let Some(context) = input::format_context_files(&processed.context_files)
+    {
+        format!("{}\n\n{context}", processed.prompt)
+    } else {
+        processed.prompt.clone()
+    };
 
     let pending_images = if processed.images.is_empty() {
         None
@@ -502,7 +502,10 @@ async fn handle_compact(
 
     if history.len() < 4 {
         if !silent {
-            println!("  \x1b[90mConversation is too short to compact ({} messages).\x1b[0m", history.len());
+            println!(
+                "  \x1b[90mConversation is too short to compact ({} messages).\x1b[0m",
+                history.len()
+            );
         }
         return;
     }
@@ -533,7 +536,10 @@ async fn handle_compact(
     }
 
     println!();
-    println!("  \x1b[36m\u{1f43b} Compacting {} messages...\x1b[0m", history.len());
+    println!(
+        "  \x1b[36m\u{1f43b} Compacting {} messages...\x1b[0m",
+        history.len()
+    );
 
     let summary_prompt = format!(
         "Summarize this conversation concisely. Preserve:\n\
@@ -566,16 +572,19 @@ async fn handle_compact(
     };
 
     // Wrap the summary so the LLM knows it's a compacted history
-    let compact_message = format!(
-        "[This is a compacted summary of our previous conversation]\n\n{summary}"
-    );
+    let compact_message =
+        format!("[This is a compacted summary of our previous conversation]\n\n{summary}");
 
     // Replace all messages with the summary
     match db.compact_session(session_id, &compact_message).await {
         Ok(deleted) => {
             let summary_tokens = summary.len() / 4;
-            println!("  \x1b[32m\u{2713}\x1b[0m Compacted {deleted} messages → ~{summary_tokens} tokens");
-            println!("  \x1b[90mConversation context has been summarized. Continue as normal!\x1b[0m");
+            println!(
+                "  \x1b[32m\u{2713}\x1b[0m Compacted {deleted} messages → ~{summary_tokens} tokens"
+            );
+            println!(
+                "  \x1b[90mConversation context has been summarized. Continue as normal!\x1b[0m"
+            );
         }
         Err(e) => {
             println!("  \x1b[31mFailed to compact session: {e}\x1b[0m");

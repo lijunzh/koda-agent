@@ -179,10 +179,14 @@ impl OpenAiCompatProvider {
                         }
                         Some(serde_json::Value::Array(parts))
                     } else {
-                        m.content.as_ref().map(|c| serde_json::Value::String(c.clone()))
+                        m.content
+                            .as_ref()
+                            .map(|c| serde_json::Value::String(c.clone()))
                     }
                 } else {
-                    m.content.as_ref().map(|c| serde_json::Value::String(c.clone()))
+                    m.content
+                        .as_ref()
+                        .map(|c| serde_json::Value::String(c.clone()))
                 };
 
                 ApiMessage {
@@ -480,7 +484,10 @@ mod tests {
         assert_eq!(request.messages.len(), 1);
         // Plain text should be a JSON string, not an array
         let content = request.messages[0].content.as_ref().unwrap();
-        assert!(content.is_string(), "Expected string content, got: {content}");
+        assert!(
+            content.is_string(),
+            "Expected string content, got: {content}"
+        );
         assert_eq!(content.as_str().unwrap(), "hello");
     }
 
@@ -500,7 +507,10 @@ mod tests {
         let content = request.messages[0].content.as_ref().unwrap();
 
         // Should be an array with text + image_url parts
-        assert!(content.is_array(), "Expected array content for images, got: {content}");
+        assert!(
+            content.is_array(),
+            "Expected array content for images, got: {content}"
+        );
         let parts = content.as_array().unwrap();
         assert_eq!(parts.len(), 2);
 
@@ -527,7 +537,10 @@ mod tests {
         let request = OpenAiCompatProvider::build_request(&messages, &[], "gpt-4o", None);
         let content = request.messages[0].content.as_ref().unwrap();
         // Empty images should NOT produce an array, just a string
-        assert!(content.is_string(), "Empty images should produce string content");
+        assert!(
+            content.is_string(),
+            "Empty images should produce string content"
+        );
     }
 
     #[test]

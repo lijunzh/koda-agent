@@ -132,9 +132,7 @@ enum ContentBlock {
         content: String,
     },
     #[serde(rename = "image")]
-    Image {
-        source: ImageSource,
-    },
+    Image { source: ImageSource },
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -144,7 +142,6 @@ struct ImageSource {
     media_type: String,
     data: String,
 }
-
 
 // ── Response types ───────────────────────────────────────────
 
@@ -543,31 +540,31 @@ impl AnthropicProvider {
 
             // Regular user or assistant text message
             // If images are attached (user messages with @image refs), use blocks
-            if let Some(images) = &msg.images {
-                if !images.is_empty() {
-                    let mut blocks = Vec::new();
-                    // Images first (Anthropic recommends images before text)
-                    for img in images {
-                        blocks.push(ContentBlock::Image {
-                            source: ImageSource {
-                                source_type: "base64".to_string(),
-                                media_type: img.media_type.clone(),
-                                data: img.base64.clone(),
-                            },
-                        });
-                    }
-                    // Then text
-                    if let Some(text) = &msg.content {
-                        if !text.is_empty() {
-                            blocks.push(ContentBlock::Text { text: text.clone() });
-                        }
-                    }
-                    result.push(AnthropicMessage {
-                        role: msg.role.clone(),
-                        content: AnthropicContent::Blocks(blocks),
+            if let Some(images) = &msg.images
+                && !images.is_empty()
+            {
+                let mut blocks = Vec::new();
+                // Images first (Anthropic recommends images before text)
+                for img in images {
+                    blocks.push(ContentBlock::Image {
+                        source: ImageSource {
+                            source_type: "base64".to_string(),
+                            media_type: img.media_type.clone(),
+                            data: img.base64.clone(),
+                        },
                     });
-                    continue;
                 }
+                // Then text
+                if let Some(text) = &msg.content
+                    && !text.is_empty()
+                {
+                    blocks.push(ContentBlock::Text { text: text.clone() });
+                }
+                result.push(AnthropicMessage {
+                    role: msg.role.clone(),
+                    content: AnthropicContent::Blocks(blocks),
+                });
+                continue;
             }
 
             result.push(AnthropicMessage {
