@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tokio::process::Command;
 
-const MAX_OUTPUT_LINES: usize = 100;
+const MAX_OUTPUT_LINES: usize = 256;
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
 /// Return tool definitions for the LLM.
@@ -19,8 +19,14 @@ pub fn definitions() -> Vec<ToolDefinition> {
         description: "Execute a shell command and return stdout/stderr. \
             Prefer dedicated tools (Read, Grep, List, Edit) over shell equivalents. \
             Use Bash ONLY for: builds, tests, git operations, and commands without a dedicated tool. \
-            For test suites, suppress verbose output: `npm test -- --silent` or `| tail -20`. \
-            Use `| head` or `| tail` to limit output from noisy commands.".to_string(),
+            IMPORTANT: Always limit output to avoid wasting tokens. Techniques: \
+            `| tail -20` (last N lines), `| head -10` (first N lines), \
+            `| grep 'pattern'` (filter relevant lines), \
+            `2>/dev/null` (suppress stderr noise), \
+            `--silent` or `--quiet` flags when available. \
+            For test suites: `cargo test 2>&1 | tail -20`, `npm test -- --silent`, `pytest -q`. \
+            For searches: prefer Grep tool, or pipe through `| head` if using shell grep. \
+            Output is capped at 100 lines — pipe to limit before that.".to_string(),
         parameters: json!({
             "type": "object",
             "properties": {

@@ -255,12 +255,12 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                     "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {skipped} lines hidden ...]{RESET}"
                 );
                 for line in &output_lines[output_lines.len() - max_display..] {
-                    let display_line = if line.len() > 120 { &line[..120] } else { line };
+                    let display_line = if line.len() > 256 { &line[..256] } else { line };
                     println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
                 }
             } else {
                 for line in &output_lines {
-                    let display_line = if line.len() > 120 { &line[..120] } else { line };
+                    let display_line = if line.len() > 256 { &line[..256] } else { line };
                     println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
                 }
             }
