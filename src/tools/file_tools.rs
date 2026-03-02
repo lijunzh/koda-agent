@@ -5,7 +5,7 @@
 use super::safe_resolve_path;
 use crate::providers::ToolDefinition;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
@@ -152,13 +152,13 @@ pub async fn read_file(
     let num_lines = args["num_lines"].as_u64();
 
     // Check if the file exists and get its metadata
-    let metadata = tokio::fs::metadata(&resolved).await.map_err(|e| {
-        anyhow::anyhow!("Failed to read {}: {}", resolved.display(), e)
-    })?;
-    
+    let metadata = tokio::fs::metadata(&resolved)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", resolved.display(), e))?;
+
     let mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
     let size = metadata.len();
-    
+
     let cache_key = format!("{}:{:?}:{:?}", resolved.display(), start_line, num_lines);
 
     // Stale-read optimization: if the file hasn't changed since the last time this session read it,
