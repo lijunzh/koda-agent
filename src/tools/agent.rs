@@ -46,11 +46,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "CreateAgent".to_string(),
             description: "Create a new sub-agent for RECURRING specialized tasks. \
-                Only create an agent when the user has asked for the same type of task \
-                multiple times and a focused persona would produce better results. \
-                Do NOT create agents for one-off tasks you can handle directly. \
-                Read an existing agent (e.g., agents/reviewer.json) first to follow \
-                the same quality patterns."
+                BEFORE calling this tool, you MUST: \
+                1) Call ListAgents to check if a similar agent already exists. \
+                2) Read an existing agent (e.g., agents/reviewer.json) to use as a quality template. \
+                3) Confirm with the user that they want a new agent. \
+                Do NOT create agents for one-off tasks you can handle directly."
                 .to_string(),
             parameters: json!({
                 "type": "object",
