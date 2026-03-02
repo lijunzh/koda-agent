@@ -86,3 +86,9 @@ rustyline = "15"
 [dev-dependencies]
 tempfile = "3"
 path-clean = "1"
+
+[profile.release]
+strip = true       # Strip debug symbols (~3-4MB savings)
+lto = true          # Link-time optimization across all crates (~1-2MB savings)
+codegen-units = 1   # Single codegen unit for better optimization
+panic = "abort"     # Remove unwinding code (~200KB savings)
