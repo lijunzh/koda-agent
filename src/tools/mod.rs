@@ -21,10 +21,8 @@ use crate::providers::ToolDefinition;
 
 /// Result of executing a tool.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ToolResult {
     pub output: String,
-    pub success: bool,
 }
 
 /// The tool registry: maps tool names to their definitions and handlers.
@@ -85,7 +83,6 @@ impl ToolRegistry {
             Err(e) => {
                 return ToolResult {
                     output: format!("Invalid JSON arguments: {e}"),
-                    success: false,
                 };
             }
         };
@@ -131,7 +128,6 @@ impl ToolRegistry {
                 // Handled externally by the event loop (needs access to config/db).
                 return ToolResult {
                     output: "__INVOKE_AGENT__".to_string(),
-                    success: true,
                 };
             }
 
@@ -139,13 +135,9 @@ impl ToolRegistry {
         };
 
         match result {
-            Ok(output) => ToolResult {
-                output,
-                success: true,
-            },
+            Ok(output) => ToolResult { output },
             Err(e) => ToolResult {
                 output: format!("Error: {e}"),
-                success: false,
             },
         }
     }

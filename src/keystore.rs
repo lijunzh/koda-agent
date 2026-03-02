@@ -56,21 +56,9 @@ impl KeyStore {
         Ok(())
     }
 
-    /// Get a key by env var name.
-    #[allow(dead_code)]
-    pub fn get(&self, env_name: &str) -> Option<&str> {
-        self.keys.get(env_name).map(|s| s.as_str())
-    }
-
     /// Set a key by env var name.
     pub fn set(&mut self, env_name: &str, value: &str) {
         self.keys.insert(env_name.to_string(), value.to_string());
-    }
-
-    /// Remove a key.
-    #[allow(dead_code)]
-    pub fn remove(&mut self, env_name: &str) -> bool {
-        self.keys.remove(env_name).is_some()
     }
 
     /// Load all stored keys into the process environment.
@@ -136,8 +124,14 @@ mod tests {
 
         // Load
         let loaded: KeyStore = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(loaded.get("OPENAI_API_KEY"), Some("sk-test-123"));
-        assert_eq!(loaded.get("ANTHROPIC_API_KEY"), Some("sk-ant-456"));
+        assert_eq!(
+            loaded.keys.get("OPENAI_API_KEY").map(|s| s.as_str()),
+            Some("sk-test-123")
+        );
+        assert_eq!(
+            loaded.keys.get("ANTHROPIC_API_KEY").map(|s| s.as_str()),
+            Some("sk-ant-456")
+        );
     }
 
     #[test]
@@ -150,8 +144,8 @@ mod tests {
     fn test_remove_key() {
         let mut store = KeyStore::default();
         store.set("TEST_KEY", "value");
-        assert!(store.remove("TEST_KEY"));
-        assert!(!store.remove("TEST_KEY"));
-        assert_eq!(store.get("TEST_KEY"), None);
+        assert!(store.keys.remove("TEST_KEY").is_some());
+        assert!(store.keys.remove("TEST_KEY").is_none());
+        assert_eq!(store.keys.get("TEST_KEY"), None);
     }
 }

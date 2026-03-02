@@ -147,7 +147,6 @@ pub async fn inference_loop(
                     .await?;
                 }
                 // Store last response for /copy
-                crate::clipboard::set_last_response(&full_text);
 
                 return Ok(());
             }

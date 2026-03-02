@@ -22,15 +22,6 @@ pub fn set(key: impl Into<String>, value: impl Into<String>) {
         .insert(key.into(), value.into());
 }
 
-/// Remove a runtime environment variable.
-#[allow(dead_code)]
-pub fn remove(key: &str) {
-    env_map()
-        .write()
-        .expect("runtime env lock poisoned")
-        .remove(key);
-}
-
 /// Get a runtime variable, falling back to `std::env::var`.
 /// Checks our runtime map first, then the real process environment.
 pub fn get(key: &str) -> Option<String> {
@@ -63,7 +54,7 @@ mod tests {
     fn test_remove() {
         set("TEST_REMOVE_KEY", "value");
         assert!(is_set("TEST_REMOVE_KEY"));
-        remove("TEST_REMOVE_KEY");
+        env_map().write().unwrap().remove("TEST_REMOVE_KEY");
         // May still exist in process env, but runtime map entry is gone
     }
 
@@ -78,7 +69,7 @@ mod tests {
         set("PATH", "overridden");
         assert_eq!(get("PATH"), Some("overridden".to_string()));
         // Clean up
-        remove("PATH");
+        env_map().write().unwrap().remove("PATH");
     }
 
     #[test]
