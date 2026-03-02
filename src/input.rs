@@ -27,7 +27,6 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/model", "Pick a model interactively"),
     ("/provider", "Switch LLM provider"),
     ("/sessions", "List/resume/delete sessions"),
-    ("/quit", "Exit Koda"),
 ];
 
 /// The combined helper wired into `rustyline::Editor`.

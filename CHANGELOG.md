@@ -90,6 +90,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `/model` — switch models interactively
 - `/provider` — switch LLM providers
 - `/sessions` — list, resume, or delete sessions
+- Keyboard shortcuts: `Ctrl+C` to interrupt, `Ctrl+D` to exit, `@file` to attach context
 
 ### CI/CD
 - GitHub Actions: CI (fmt, clippy, test ×3 OS, doc, audit)

@@ -11,7 +11,7 @@ mod repl_commands {
         let cmd = parts[0];
 
         match cmd {
-            "/quit" | "/exit" | "/q" => "Quit",
+            "/exit" => "Quit",
             "/model" if parts.len() > 1 => "SwitchModel",
             "/model" => "PickModel",
             "/provider" if parts.len() > 1 => "SetupProvider",
@@ -39,9 +39,7 @@ mod repl_commands {
 
     #[test]
     fn test_all_expected_commands_dispatch() {
-        assert_eq!(dispatch("/quit"), "Quit");
         assert_eq!(dispatch("/exit"), "Quit");
-        assert_eq!(dispatch("/q"), "Quit");
         assert_eq!(dispatch("/model"), "PickModel");
         assert_eq!(dispatch("/model gpt-4o"), "SwitchModel");
         assert_eq!(dispatch("/provider"), "PickProvider");
@@ -174,7 +172,6 @@ mod completions {
         "/model",
         "/provider",
         "/sessions",
-        "/quit",
     ];
 
     /// Commands that should NOT appear in completions.
@@ -182,7 +179,7 @@ mod completions {
 
     #[test]
     fn test_expected_commands_present() {
-        assert_eq!(EXPECTED_COMMANDS.len(), 11, "Expected 11 slash commands");
+        assert_eq!(EXPECTED_COMMANDS.len(), 10, "Expected 10 slash commands");
         for cmd in EXPECTED_COMMANDS {
             assert!(
                 EXPECTED_COMMANDS.contains(cmd),

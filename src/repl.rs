@@ -38,7 +38,7 @@ pub async fn handle_command(
     let arg = parts.get(1).map(|s| s.trim());
 
     match cmd {
-        "/quit" | "/exit" => ReplAction::Quit,
+        "/exit" => ReplAction::Quit,
 
         "/copy" => {
             let response = crate::clipboard::get_last_response();

@@ -199,7 +199,6 @@ pub async fn run(
                         ("/model", "Pick a model interactively"),
                         ("/provider", "Switch LLM provider"),
                         ("/sessions", "List/resume/delete sessions"),
-                        ("/quit", "Exit Koda"),
                     ];
                     let options: Vec<SelectOption> = commands
                         .iter()

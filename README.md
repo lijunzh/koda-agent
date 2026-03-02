@@ -111,7 +111,6 @@ Tools use PascalCase naming:
 | `/model` | Pick a model (↑↓ arrow keys) |
 | `/provider` | Pick a provider |
 | `/sessions` | List recent sessions |
-| `/quit` | Exit |
 
 ## Smart Input
 
