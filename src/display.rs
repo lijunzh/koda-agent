@@ -247,29 +247,15 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                 }
             }
 
-            // Extract key summary lines from ANYWHERE in the output
-            // (test results, errors, warnings that might be buried)
+            // Simple last-N display. The LLM should pipe commands
+            // to surface relevant output — not our job to guess.
             let max_tail = 20;
             if output_lines.len() > max_tail {
-                let tail_start = output_lines.len() - max_tail;
-                // Show summary lines that appear BEFORE the tail
-                let summaries: Vec<(usize, &str)> = output_lines
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, l)| *i < tail_start && is_summary_line(l))
-                    .map(|(i, l)| (i, *l))
-                    .collect();
-                for (_, line) in &summaries {
-                    let dl = truncate_display_line(line);
-                    println!("{CONTENT_INDENT}{border_color}│{RESET} \x1b[1m{dl}\x1b[0m");
-                }
-                let hidden = tail_start - summaries.len();
-                if hidden > 0 {
-                    println!(
-                        "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {hidden} lines hidden ...]{RESET}"
-                    );
-                }
-                for line in &output_lines[tail_start..] {
+                let hidden = output_lines.len() - max_tail;
+                println!(
+                    "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {hidden} lines hidden ...]{RESET}"
+                );
+                for line in &output_lines[output_lines.len() - max_tail..] {
                     let dl = truncate_display_line(line);
                     println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{dl}{RESET}");
                 }
@@ -469,18 +455,6 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
             print_capped_output(output, border_color, 10);
         }
     }
-}
-
-/// Check if a line contains a key summary (test result, error, warning).
-fn is_summary_line(line: &str) -> bool {
-    let l = line.to_lowercase();
-    // Test runner summaries
-    l.contains("test result")
-        || (l.contains("passed") && (l.contains("failed") || l.contains("ignored")))
-        // Build results
-        || l.starts_with("error") // error: or error[E0308]
-        || l.contains("build failed")
-        || l.contains("could not compile")
 }
 
 /// Truncate a display line to 256 chars.
