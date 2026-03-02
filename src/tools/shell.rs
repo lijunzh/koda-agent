@@ -19,14 +19,12 @@ pub fn definitions() -> Vec<ToolDefinition> {
         description: "Execute a shell command and return stdout/stderr. \
             Prefer dedicated tools (Read, Grep, List, Edit) over shell equivalents. \
             Use Bash ONLY for: builds, tests, git operations, and commands without a dedicated tool. \
-            IMPORTANT: Always limit output to avoid wasting tokens. Techniques: \
-            `| tail -20` (last N lines), `| head -10` (first N lines), \
-            `| grep 'pattern'` (filter relevant lines), \
-            `2>/dev/null` (suppress stderr noise), \
-            `--silent` or `--quiet` flags when available. \
-            For test suites: `cargo test 2>&1 | tail -20`, `npm test -- --silent`, `pytest -q`. \
-            For searches: prefer Grep tool, or pipe through `| head` if using shell grep. \
-            Output is capped at 256 lines — pipe to limit before that.".to_string(),
+            IMPORTANT — minimize output to save tokens: \
+            1) NEVER use --verbose, -v, or --debug flags unless specifically debugging. \
+            2) ALWAYS pipe output: `| tail -20` (last lines), `| head -10`, `| grep 'pattern'`. \
+            3) Use quiet flags: `cargo test 2>&1 | tail -5`, `npm test -- --silent`, `pytest -q`. \
+            4) Suppress noise: `2>/dev/null`, `--quiet`, `-q`. \
+            Output is capped at 256 lines and only the last 30 are displayed.".to_string(),
         parameters: json!({
             "type": "object",
             "properties": {

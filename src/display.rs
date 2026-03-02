@@ -235,7 +235,6 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
     match tool_name {
         // ── Mutation tools: show diffs/output ─────────────────
         "Bash" => {
-            // Show exit code line, then capped output
             let lines: Vec<&str> = output.lines().collect();
             let mut output_lines: Vec<&str> = Vec::new();
             for line in &lines {
@@ -247,21 +246,37 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                     output_lines.push(line);
                 }
             }
-            // Show last 30 lines of output (user sees summary, LLM sees full)
-            let max_display = 30;
-            if output_lines.len() > max_display {
-                let skipped = output_lines.len() - max_display;
-                println!(
-                    "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {skipped} lines hidden ...]{RESET}"
-                );
-                for line in &output_lines[output_lines.len() - max_display..] {
-                    let display_line = if line.len() > 256 { &line[..256] } else { line };
-                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
+
+            // Extract key summary lines from ANYWHERE in the output
+            // (test results, errors, warnings that might be buried)
+            let max_tail = 20;
+            if output_lines.len() > max_tail {
+                let tail_start = output_lines.len() - max_tail;
+                // Show summary lines that appear BEFORE the tail
+                let summaries: Vec<(usize, &str)> = output_lines
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, l)| *i < tail_start && is_summary_line(l))
+                    .map(|(i, l)| (i, *l))
+                    .collect();
+                for (_, line) in &summaries {
+                    let dl = truncate_display_line(line);
+                    println!("{CONTENT_INDENT}{border_color}│{RESET} \x1b[1m{dl}\x1b[0m");
+                }
+                let hidden = tail_start - summaries.len();
+                if hidden > 0 {
+                    println!(
+                        "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {hidden} lines hidden ...]{RESET}"
+                    );
+                }
+                for line in &output_lines[tail_start..] {
+                    let dl = truncate_display_line(line);
+                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{dl}{RESET}");
                 }
             } else {
                 for line in &output_lines {
-                    let display_line = if line.len() > 256 { &line[..256] } else { line };
-                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
+                    let dl = truncate_display_line(line);
+                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{dl}{RESET}");
                 }
             }
         }
@@ -454,6 +469,24 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
             print_capped_output(output, border_color, 10);
         }
     }
+}
+
+/// Check if a line contains a key summary (test result, error, warning).
+fn is_summary_line(line: &str) -> bool {
+    let l = line.to_lowercase();
+    l.contains("test result")
+        || l.contains("tests passed")
+        || l.contains("tests failed")
+        || l.contains("error:")
+        || l.contains("error[")
+        || l.contains("warning:")
+        || l.contains("failed")
+        || (l.contains("passed") && l.contains("failed"))
+}
+
+/// Truncate a display line to 256 chars.
+fn truncate_display_line(line: &str) -> &str {
+    if line.len() > 256 { &line[..256] } else { line }
 }
 
 /// Print output lines with a colored border, capped at `max_lines`.
