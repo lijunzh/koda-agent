@@ -236,6 +236,15 @@ LLM responses on one task while reading user input on another.
 2. **Input line** (always active) — user can type while output is streaming
 3. **Footer bar** (persistent) — shortcuts, model name, context %, active task count
 
+**Parallel Execution UX (The "Claude Code" pattern):**
+Parallel tool execution (e.g., 3 sub-agents running at once) breaks traditional
+streaming output. The TUI will solve this using **collapsible task groups**:
+- **While running:** Show a live-updating list of spinners (e.g., `⠧ security: scanning...`)
+- **When finished:** Collapse into a single summary line (`▶ 3 tools executed`)
+- **Interactive:** User can arrow-key up to the summary and hit `Enter` to expand
+  and view the raw output. We will explicitly avoid Tmux-style vertical splits,
+  as they don't scale when the LLM invokes 5+ tools simultaneously.
+
 **Key capabilities this unlocks:**
 - **Type while thinking** — queue next prompt while LLM is responding
 - **Interrupt and redirect** — Ctrl+C stops current task, immediately accept new input
