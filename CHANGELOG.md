@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.0] - 2025-03-01
 
-First public release. Single compiled Rust binary with multi-provider LLM
-support, 19 built-in tools, 5 embedded agents, and zero runtime dependencies.
+**A high-performance AI coding agent built in Rust.** Single binary. Multi-provider. Zero dependencies.
+
+✨ **Highlights:** 19 tools · 6 LLM providers · 5 embedded agents · parallel sub-agents · image analysis · headless mode · auto-compact · prompt caching · 288 tests
 
 ### Core
 - 19 built-in tools: file ops (Read/Write/Edit/Delete/List), search (Grep/Glob),
