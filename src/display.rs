@@ -46,14 +46,12 @@ pub fn print_tool_call(tc: &ToolCall, is_sub_agent: bool) {
     let indent = if is_sub_agent { "  " } else { "" };
     let (color, label, detail) = tool_info(&tc.function_name, &tc.arguments);
 
-    // ShareReasoning gets special rendering: thinking banner + dim content
+    // ShareReasoning gets special rendering: thinking banner + structured block
     if tc.function_name == "ShareReasoning" {
         print_thinking_banner();
         let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
         if let Some(reasoning) = args.get("reasoning").and_then(|v| v.as_str()) {
-            for line in reasoning.lines() {
-                println!("{indent}{DIM}{line}{RESET}");
-            }
+            render_thinking_block(reasoning);
         }
         return;
     }
@@ -212,6 +210,28 @@ pub fn print_sub_agent_start(agent_name: &str) {
 /// Print the THINKING indicator (for `<think>` blocks from reasoning models).
 pub fn print_thinking_banner() {
     println!("\n{VIOLET}\u{1f36f}{RESET} {BOLD}Thinking{RESET} {DIM}⚡{RESET}");
+}
+
+const THINKING_PREVIEW_LINES: usize = 20;
+
+/// Render a structured thinking block with violet `│` gutter and bold `#` headers.
+pub fn render_thinking_block(text: &str) {
+    let lines: Vec<&str> = text.lines().collect();
+    let total = lines.len();
+    let show = total.min(THINKING_PREVIEW_LINES);
+
+    for line in &lines[..show] {
+        if line.starts_with('#') {
+            println!("{CONTENT_INDENT}{VIOLET}│{RESET} \x1b[1;90m{line}{RESET}");
+        } else {
+            println!("{CONTENT_INDENT}{VIOLET}│{RESET} {DIM}{line}{RESET}");
+        }
+    }
+    if total > THINKING_PREVIEW_LINES {
+        let hidden = total - THINKING_PREVIEW_LINES;
+        println!("{CONTENT_INDENT}{VIOLET}│{RESET} {DIM}... +{hidden} more lines{RESET}");
+    }
+    println!();
 }
 
 /// Print the AGENT RESPONSE indicator.

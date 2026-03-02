@@ -125,6 +125,7 @@ pub async fn inference_loop(
         let mut char_count: usize = 0;
         let mut in_think_block = false;
         let mut think_buffer = String::new();
+        let mut native_think_buf = String::new();
         let mut response_banner_shown = false;
         let mut thinking_banner_shown = false;
         let mut interrupted = false;
@@ -172,6 +173,14 @@ pub async fn inference_loop(
             match chunk {
                 StreamChunk::TextDelta(delta) => {
                     if first_token {
+                        // Flush any buffered native thinking before showing response
+                        if !native_think_buf.is_empty() {
+                            spinner.finish_and_clear();
+                            display::print_thinking_banner();
+                            display::render_thinking_block(&native_think_buf);
+                            native_think_buf.clear();
+                            thinking_banner_shown = true;
+                        }
                         spinner.finish_and_clear();
                         first_token = false;
                     }
@@ -193,12 +202,10 @@ pub async fn inference_loop(
                         if in_think_block {
                             // Looking for </think>
                             if let Some(end_pos) = think_buffer.find("</think>") {
-                                // Render thinking content dim
+                                // Render structured thinking block when complete
                                 let thinking = &think_buffer[..end_pos];
                                 if !thinking.is_empty() {
-                                    print!("\x1b[90m{thinking}\x1b[0m");
-                                    use std::io::Write;
-                                    let _ = std::io::stdout().flush();
+                                    display::render_thinking_block(thinking);
                                 }
                                 think_buffer = think_buffer[end_pos + 8..].to_string();
                                 in_think_block = false;
@@ -207,13 +214,8 @@ pub async fn inference_loop(
                                 response_banner_shown = true;
                                 continue; // process remaining buffer
                             } else {
-                                // Still in think block, render what we have dim
-                                if !think_buffer.is_empty() {
-                                    print!("\x1b[90m{think_buffer}\x1b[0m");
-                                    use std::io::Write;
-                                    let _ = std::io::stdout().flush();
-                                    think_buffer.clear();
-                                }
+                                // Still in think block — just accumulate, don't print yet
+                                // (spinner provides progress feedback while we buffer)
                                 break;
                             }
                         } else {
@@ -253,24 +255,27 @@ pub async fn inference_loop(
                     }
                 }
                 StreamChunk::ThinkingDelta(delta) => {
-                    if first_token {
-                        spinner.finish_and_clear();
-                        first_token = false;
-                    }
-                    if !thinking_banner_shown {
-                        display::print_thinking_banner();
-                        thinking_banner_shown = true;
-                    }
-                    // Render thinking content dim (native API thinking is ephemeral)
-                    print!("\x1b[90m{delta}\x1b[0m");
-                    use std::io::Write;
-                    let _ = std::io::stdout().flush();
+                    // Buffer — rendered as a complete block once thinking finishes
+                    native_think_buf.push_str(&delta);
                 }
                 StreamChunk::ToolCalls(tcs) => {
+                    if !native_think_buf.is_empty() {
+                        spinner.finish_and_clear();
+                        display::print_thinking_banner();
+                        display::render_thinking_block(&native_think_buf);
+                        native_think_buf.clear();
+                    }
                     spinner.finish_and_clear();
                     tool_calls = tcs;
                 }
                 StreamChunk::Done(u) => {
+                    // Flush any remaining native thinking (thinking-only turns)
+                    if !native_think_buf.is_empty() {
+                        spinner.finish_and_clear();
+                        display::print_thinking_banner();
+                        display::render_thinking_block(&native_think_buf);
+                        native_think_buf.clear();
+                    }
                     usage = u;
                     break;
                 }

@@ -27,9 +27,12 @@ pub fn needs_confirmation(tool_name: &str) -> bool {
     CONFIRM_TOOLS.contains(&tool_name)
 }
 
-/// Check if a tool requires confirmation, including custom tool detection.
-/// Custom tools execute shell commands, so they always require confirmation.
-pub fn needs_confirmation_with_project(tool_name: &str, _project_root: &std::path::Path) -> bool {
+/// Check if a tool requires confirmation.
+pub fn needs_confirmation_with_project(
+    tool_name: &str,
+    project_root: &std::path::Path,
+) -> bool {
+    let _ = project_root;
     CONFIRM_TOOLS.contains(&tool_name)
 }
 
