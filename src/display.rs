@@ -474,14 +474,13 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
 /// Check if a line contains a key summary (test result, error, warning).
 fn is_summary_line(line: &str) -> bool {
     let l = line.to_lowercase();
+    // Test runner summaries
     l.contains("test result")
-        || l.contains("tests passed")
-        || l.contains("tests failed")
-        || l.contains("error:")
-        || l.contains("error[")
-        || l.contains("warning:")
-        || l.contains("failed")
-        || (l.contains("passed") && l.contains("failed"))
+        || (l.contains("passed") && (l.contains("failed") || l.contains("ignored")))
+        // Build results
+        || l.starts_with("error") // error: or error[E0308]
+        || l.contains("build failed")
+        || l.contains("could not compile")
 }
 
 /// Truncate a display line to 256 chars.
