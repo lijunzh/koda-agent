@@ -17,6 +17,7 @@ use path_clean::PathClean;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::providers::ToolDefinition;
 
@@ -30,6 +31,7 @@ pub struct ToolResult {
 pub struct ToolRegistry {
     project_root: PathBuf,
     definitions: HashMap<String, ToolDefinition>,
+    read_cache: std::sync::Mutex<HashMap<String, (u64, SystemTime)>>,
 }
 
 impl ToolRegistry {
@@ -66,6 +68,7 @@ impl ToolRegistry {
         Self {
             project_root,
             definitions,
+            read_cache: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -98,7 +101,7 @@ impl ToolRegistry {
 
         let result = match name {
             // File tools
-            "Read" => file_tools::read_file(&self.project_root, &args).await,
+            "Read" => file_tools::read_file(&self.project_root, &args, &self.read_cache).await,
             "Write" => file_tools::write_file(&self.project_root, &args).await,
             "Edit" => file_tools::edit_file(&self.project_root, &args).await,
             "Delete" => file_tools::delete_file(&self.project_root, &args).await,

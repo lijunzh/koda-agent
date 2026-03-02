@@ -5,8 +5,10 @@
 use super::safe_resolve_path;
 use crate::providers::ToolDefinition;
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
 /// Return tool definitions for the LLM.
 pub fn definitions() -> Vec<ToolDefinition> {
@@ -136,7 +138,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
 /// Read file contents, with optional line-range selection.
 /// When a line range is requested, only reads lines up to the end of the range
 /// instead of loading the entire file into memory.
-pub async fn read_file(project_root: &Path, args: &Value) -> Result<String> {
+pub async fn read_file(
+    project_root: &Path,
+    args: &Value,
+    cache: &std::sync::Mutex<HashMap<String, (u64, SystemTime)>>,
+) -> Result<String> {
     let path_str = args["path"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing 'path' argument"))?;
@@ -144,6 +150,31 @@ pub async fn read_file(project_root: &Path, args: &Value) -> Result<String> {
 
     let start_line = args["start_line"].as_u64();
     let num_lines = args["num_lines"].as_u64();
+
+    // Check if the file exists and get its metadata
+    let metadata = tokio::fs::metadata(&resolved).await.map_err(|e| {
+        anyhow::anyhow!("Failed to read {}: {}", resolved.display(), e)
+    })?;
+    
+    let mtime = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let size = metadata.len();
+    
+    let cache_key = format!("{}:{:?}:{:?}", resolved.display(), start_line, num_lines);
+
+    // Stale-read optimization: if the file hasn't changed since the last time this session read it,
+    // we don't need to re-read and re-stream it to the LLM. It's already in the conversation context.
+    {
+        let cache_guard = cache.lock().unwrap();
+        if let Some(&(cached_size, cached_mtime)) = cache_guard.get(&cache_key)
+            && cached_size == size
+            && cached_mtime == mtime
+        {
+            return Ok(format!(
+                "[File '{}' is unchanged since last read. Full content is already in your conversation history.]",
+                path_str
+            ));
+        }
+    }
 
     let output = match (start_line, num_lines) {
         (Some(start), Some(count)) => {
@@ -187,6 +218,12 @@ pub async fn read_file(project_root: &Path, args: &Value) -> Result<String> {
             }
         }
     };
+
+    // Update the cache after a successful read
+    {
+        let mut cache_guard = cache.lock().unwrap();
+        cache_guard.insert(cache_key, (size, mtime));
+    }
 
     Ok(output)
 }

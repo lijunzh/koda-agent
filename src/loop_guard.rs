@@ -48,13 +48,16 @@ impl LoopDetector {
         for tc in tool_calls {
             let fp = fingerprint(&tc.function_name, &tc.arguments);
 
-            // Sliding window for repetition detection
-            self.window.push_back(fp);
-            if self.window.len() > WINDOW_SIZE {
-                self.window.pop_front();
+            // Sliding window for loop detection ONLY tracks mutating tools.
+            // Repeating read-only operations is handled by stale-read optimization.
+            if is_mutating_tool(&tc.function_name) {
+                self.window.push_back(fp);
+                if self.window.len() > WINDOW_SIZE {
+                    self.window.pop_front();
+                }
             }
 
-            // Ring buffer for display
+            // Ring buffer for display always tracks all tools
             self.recent.push_back(tc.function_name.clone());
             if self.recent.len() > DISPLAY_RECENT {
                 self.recent.pop_front();
@@ -85,6 +88,15 @@ impl LoopDetector {
 fn fingerprint(name: &str, args: &str) -> String {
     let prefix = &args[..args.len().min(200)];
     format!("{name}:{prefix}")
+}
+
+/// Tools that can cause destructive/mutating loops if repeated blindly.
+/// Read-only tools (Read, List, Grep) are excluded to allow safe exploration.
+fn is_mutating_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "Bash" | "Edit" | "Write" | "Delete" | "MemoryWrite" | "CreateAgent" | "InvokeAgent"
+    )
 }
 
 // ── Hard-cap prompt ───────────────────────────────────────────────
@@ -134,15 +146,15 @@ mod tests {
     #[test]
     fn no_loop_on_unique_calls() {
         let mut d = LoopDetector::new();
-        assert!(d.record(&[call("Read", "{\"path\":\"a.rs\"}")]).is_none());
-        assert!(d.record(&[call("Read", "{\"path\":\"b.rs\"}")]).is_none());
         assert!(d.record(&[call("Edit", "{\"path\":\"a.rs\"}")]).is_none());
+        assert!(d.record(&[call("Edit", "{\"path\":\"b.rs\"}")]).is_none());
+        assert!(d.record(&[call("Bash", "{\"cmd\":\"ls\"}")]).is_none());
     }
 
     #[test]
     fn detects_repeated_identical_call() {
         let mut d = LoopDetector::new();
-        let tc = call("Read", "{\"path\":\"src/main.rs\"}");
+        let tc = call("Edit", "{\"path\":\"src/main.rs\"}");
         assert!(d.record(std::slice::from_ref(&tc)).is_none());
         assert!(d.record(std::slice::from_ref(&tc)).is_none());
         // Third repetition should trigger
@@ -154,8 +166,20 @@ mod tests {
         let mut d = LoopDetector::new();
         for i in 0..10 {
             let args = format!("{{\"path\":\"file{i}.rs\"}}");
-            assert!(d.record(&[call("Read", &args)]).is_none());
+            assert!(d.record(&[call("Edit", &args)]).is_none());
         }
+    }
+
+    #[test]
+    fn ignores_readonly_tools() {
+        let mut d = LoopDetector::new();
+        let tc = call("Read", "{\"path\":\"src/main.rs\"}");
+        assert!(d.record(std::slice::from_ref(&tc)).is_none());
+        assert!(d.record(std::slice::from_ref(&tc)).is_none());
+        assert!(d.record(std::slice::from_ref(&tc)).is_none());
+        assert!(d.record(std::slice::from_ref(&tc)).is_none());
+        // Even 4 repetitions shouldn't trigger because Read is ignored
+        assert!(d.check().is_none());
     }
 
     #[test]
