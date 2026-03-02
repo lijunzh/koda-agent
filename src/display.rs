@@ -235,19 +235,34 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
     match tool_name {
         // ── Mutation tools: show diffs/output ─────────────────
         "Bash" => {
+            // Show exit code line, then capped output
             let lines: Vec<&str> = output.lines().collect();
-            let mut in_output = false;
+            let mut output_lines: Vec<&str> = Vec::new();
             for line in &lines {
-                if line.starts_with("--- stdout ---") || line.starts_with("--- stderr ---") {
-                    in_output = true;
-                    continue;
-                }
-                if in_output {
+                if line.starts_with("Exit code:") {
                     println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{line}{RESET}");
+                } else if line.starts_with("--- stdout ---") || line.starts_with("--- stderr ---") {
+                    continue;
+                } else {
+                    output_lines.push(line);
                 }
             }
-            if !in_output {
-                print_capped_output(output, border_color, 20);
+            // Show last 30 lines of output (user sees summary, LLM sees full)
+            let max_display = 30;
+            if output_lines.len() > max_display {
+                let skipped = output_lines.len() - max_display;
+                println!(
+                    "{CONTENT_INDENT}{border_color}│{RESET} {DIM}[... {skipped} lines hidden ...]{RESET}"
+                );
+                for line in &output_lines[output_lines.len() - max_display..] {
+                    let display_line = if line.len() > 120 { &line[..120] } else { line };
+                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
+                }
+            } else {
+                for line in &output_lines {
+                    let display_line = if line.len() > 120 { &line[..120] } else { line };
+                    println!("{CONTENT_INDENT}{border_color}│{RESET} {DIM}{display_line}{RESET}");
+                }
             }
         }
         "Write" | "Edit" | "TodoWrite" | "MemoryWrite" => {

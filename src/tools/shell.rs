@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tokio::process::Command;
 
-const MAX_OUTPUT_LINES: usize = 150;
+const MAX_OUTPUT_LINES: usize = 100;
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
 /// Return tool definitions for the LLM.
