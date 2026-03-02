@@ -94,9 +94,7 @@ fn fingerprint(name: &str, args: &str) -> String {
 /// Returns the number of additional iterations granted (0 = stop).
 /// Defaults to stopping if the terminal is not interactive (headless mode).
 pub fn ask_continue_or_stop(cap: u32, recent_names: &[String]) -> u32 {
-    println!(
-        "\n  \x1b[33m\u{26a0}  Hard cap reached ({cap} iterations).\x1b[0m"
-    );
+    println!("\n  \x1b[33m\u{26a0}  Hard cap reached ({cap} iterations).\x1b[0m");
 
     if !recent_names.is_empty() {
         println!("  Last tool calls:");

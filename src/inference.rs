@@ -63,10 +63,7 @@ pub async fn inference_loop(
 
     loop {
         if iteration >= hard_cap {
-            let extra = loop_guard::ask_continue_or_stop(
-                hard_cap,
-                &loop_detector.recent_names(),
-            );
+            let extra = loop_guard::ask_continue_or_stop(hard_cap, &loop_detector.recent_names());
             if extra == 0 {
                 break Ok(());
             }

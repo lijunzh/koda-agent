@@ -28,10 +28,7 @@ pub fn needs_confirmation(tool_name: &str) -> bool {
 }
 
 /// Check if a tool requires confirmation.
-pub fn needs_confirmation_with_project(
-    tool_name: &str,
-    project_root: &std::path::Path,
-) -> bool {
+pub fn needs_confirmation_with_project(tool_name: &str, project_root: &std::path::Path) -> bool {
     let _ = project_root;
     CONFIRM_TOOLS.contains(&tool_name)
 }
