@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - **reviewer** — critical code reviewer (read-only, severity-tagged)
   - **security** — security auditor (OWASP, CWE-tagged)
   - **testgen** — QA engineer (finds gaps, writes tests)
-  - **releaser** — GitHub release workflow (fmt/clippy/test/doc pre-flight)
+  - **releaser** — Release engineer (discover → plan → execute workflow)
 - Agent discovery merges built-in + user (~/.config/koda/agents/) + project (agents/)
 - CreateAgent tool with validation (name, duplicates, prompt quality)
 - `/agent` command to list available sub-agents with source tags
@@ -56,6 +56,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `--output-format json` for CI/CD integration
 - Exit code 0/1 for scripting
 
+### Shell Output Management
+- Display: last 20 lines shown to user (clean, predictable)
+- LLM context: last 256 lines kept (sufficient for analysis)
+- Per-line cap: 256 characters
+- Tool description teaches LLM to pipe and filter output
+
 ### Git Integration
 - `/diff` — show uncommitted changes summary
 - `/diff review` — LLM code review of uncommitted changes
@@ -63,8 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Performance
 - Anthropic prompt caching: system prompt + tools cached (90% cheaper input tokens)
-- Lean system prompt: 778 tokens (tool guidance lives in tool descriptions)
-- Sub-agent prompts optimized: 39% smaller via same principle
+- Lean system prompt: 807 tokens (tool guidance lives in tool descriptions)
+- Sub-agent prompts optimized: principle-based, language-agnostic
 
 ### Memory & Persistence
 - Project memory: MEMORY.md (also reads CLAUDE.md, AGENTS.md)
@@ -72,6 +78,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Persistent API keys: ~/.config/koda/keys.toml
 - REPL history: ~/.config/koda/history
 - Clipboard integration: /copy and /paste
+
+### REPL Commands
+- `/agent` — list available sub-agents
+- `/compact` — summarize conversation to reclaim context
+- `/copy` — copy response or code blocks to clipboard
+- `/cost` — show token usage for the session
+- `/diff` — show/review uncommitted changes, generate commit messages
+- `/help` — command palette
+- `/memory` — view/save project and global memory
+- `/model` — switch models interactively
+- `/paste` — show clipboard contents
+- `/provider` — switch LLM providers
+- `/proxy` — set HTTP proxy (persisted)
+- `/sessions` — list, resume, or delete sessions
+
+### CI/CD
+- GitHub Actions: CI (fmt, clippy, test ×3 OS, doc, audit)
+- Release pipeline: tag → CI gate → build (5 targets) → crates.io + GitHub release
+- Release notes auto-extracted from CHANGELOG.md
+- Dependabot for cargo and GitHub Actions dependencies
 
 ### Testing
 - 288 tests across 6 suites
