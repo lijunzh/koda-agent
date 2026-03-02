@@ -197,7 +197,6 @@ pub async fn run(
                         ("/diff", "Show git diff / review / commit message"),
                         ("/memory", "View/save project & global memory"),
                         ("/model", "Pick a model interactively"),
-                        ("/paste", "Show clipboard contents"),
                         ("/provider", "Switch LLM provider"),
                         ("/sessions", "List/resume/delete sessions"),
                         ("/quit", "Exit Koda"),

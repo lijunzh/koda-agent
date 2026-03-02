@@ -8,12 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 **A high-performance AI coding agent built in Rust.** Single binary. Multi-provider. Zero dependencies.
 
-✨ **Highlights:** 19 tools · 6 LLM providers · 5 embedded agents · parallel sub-agents · image analysis · headless mode · auto-compact · prompt caching · 288 tests
+✨ **Highlights:** 14 tools · 6 LLM providers · 5 embedded agents · parallel sub-agents · image analysis · headless mode · auto-compact · prompt caching
 
 ### Core
-- 19 built-in tools: file ops (Read/Write/Edit/Delete/List), search (Grep/Glob),
-  shell (Bash), web (WebFetch), memory (MemoryRead/Write), tasks (TodoRead/Write),
-  agents (InvokeAgent/ListAgents/CreateAgent), tools (CreateTool/ListTools/DeleteTool)
+- 14 built-in tools: file ops (Read/Write/Edit/Delete/List), search (Grep/Glob),
+  shell (Bash), web (WebFetch), memory (MemoryRead/Write),
+  agents (InvokeAgent/ListAgents/CreateAgent)
 - 6 LLM providers: LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
 - Streaming responses with inline markdown rendering and syntax highlighting
 - SQLite-backed durable sessions with session management
@@ -88,7 +88,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `/help` — command palette
 - `/memory` — view/save project and global memory
 - `/model` — switch models interactively
-- `/paste` — show clipboard contents
 - `/provider` — switch LLM providers
 - `/sessions` — list, resume, or delete sessions
 

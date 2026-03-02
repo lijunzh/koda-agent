@@ -54,7 +54,7 @@ koda -p "list all TODOs" --output-format json
 - **Image analysis** — `@image.png` or drag-and-drop images for multi-modal analysis
 - **Arrow-key menus** — interactive model/provider pickers with ↑↓ navigation
 - **Colored tool banners** — 🍯 Thinking, Response, and tool calls each with distinct colors
-- **19 built-in tools** — file ops, search, shell, web fetch, memory, task tracking, and more
+- **14 built-in tools** — file ops, search, shell, web fetch, memory, agents, and more
 - **Dynamic tool creation** — teach Koda new tools at runtime via `CreateTool`
 - **Multi-provider LLM** — LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
 - **Prompt caching** — Anthropic prompt caching for 90% cheaper input tokens
@@ -94,9 +94,6 @@ Tools use PascalCase naming:
 | `InvokeAgent` | Delegate to a sub-agent |
 | `ListAgents` | List available sub-agents |
 | `CreateAgent` | Create a new sub-agent |
-| `CreateTool` | Define a new custom tool |
-| `ListTools` | List custom tools |
-| `DeleteTool` | Remove a custom tool |
 
 ## REPL Commands
 
@@ -112,7 +109,6 @@ Tools use PascalCase naming:
 | `/help` | Command palette (select & execute) |
 | `/memory` | View/save project & global memory |
 | `/model` | Pick a model (↑↓ arrow keys) |
-| `/paste` | Show clipboard contents |
 | `/provider` | Pick a provider |
 | `/sessions` | List recent sessions |
 | `/quit` | Exit |

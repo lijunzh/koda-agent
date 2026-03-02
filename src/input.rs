@@ -25,7 +25,6 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/help", "Command palette"),
     ("/memory", "View/save project & global memory"),
     ("/model", "Pick a model interactively"),
-    ("/paste", "Show clipboard contents"),
     ("/provider", "Switch LLM provider"),
     ("/sessions", "List/resume/delete sessions"),
     ("/quit", "Exit Koda"),

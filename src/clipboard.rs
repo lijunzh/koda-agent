@@ -49,6 +49,7 @@ pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
 }
 
 /// Read text from the system clipboard.
+#[allow(dead_code)]
 pub fn paste_from_clipboard() -> Result<String, String> {
     let (cmd, args) = clipboard_paste_cmd();
 
@@ -111,6 +112,7 @@ fn clipboard_copy_cmd() -> (&'static str, Vec<&'static str>) {
     }
 }
 
+#[allow(dead_code)]
 fn clipboard_paste_cmd() -> (&'static str, Vec<&'static str>) {
     if cfg!(target_os = "macos") {
         ("pbpaste", vec![])

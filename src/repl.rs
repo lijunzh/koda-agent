@@ -100,37 +100,6 @@ pub async fn handle_command(
             ReplAction::Handled
         }
 
-        "/paste" => {
-            match crate::clipboard::paste_from_clipboard() {
-                Ok(content) => {
-                    if content.is_empty() {
-                        println!("  \x1b[90mClipboard is empty.\x1b[0m");
-                    } else {
-                        let lines = content.lines().count();
-                        println!(
-                            "  \x1b[32m\u{1f4cb}\x1b[0m Pasted {lines} line(s) from clipboard"
-                        );
-                        // Return as a NotACommand so it gets processed as user input
-                        // But we need to return the content somehow...
-                        // For now, just print it and let user manually reference it
-                        println!();
-                        for line in content.lines().take(20) {
-                            println!("  \x1b[90m{line}\x1b[0m");
-                        }
-                        if lines > 20 {
-                            println!("  \x1b[90m... ({} more lines)\x1b[0m", lines - 20);
-                        }
-                        println!();
-                        println!(
-                            "  \x1b[90mClipboard content shown above. Ask Koda about it!\x1b[0m"
-                        );
-                    }
-                }
-                Err(e) => println!("  \x1b[31m{e}\x1b[0m"),
-            }
-            ReplAction::Handled
-        }
-
         "/model" => match arg {
             Some(model) => ReplAction::SwitchModel(model.to_string()),
             None => ReplAction::PickModel,

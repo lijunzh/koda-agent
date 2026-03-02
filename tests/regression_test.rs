@@ -172,7 +172,6 @@ mod completions {
         "/help",
         "/memory",
         "/model",
-        "/paste",
         "/provider",
         "/sessions",
         "/quit",
@@ -183,7 +182,7 @@ mod completions {
 
     #[test]
     fn test_expected_commands_present() {
-        assert_eq!(EXPECTED_COMMANDS.len(), 12, "Expected 12 slash commands");
+        assert_eq!(EXPECTED_COMMANDS.len(), 11, "Expected 11 slash commands");
         for cmd in EXPECTED_COMMANDS {
             assert!(
                 EXPECTED_COMMANDS.contains(cmd),
@@ -215,15 +214,10 @@ mod display_regression {
         ("Glob", "Glob"),
         ("Bash", "Shell"),
         ("WebFetch", "Fetch"),
-        ("TodoRead", "Todo"),
-        ("TodoWrite", "Todo"),
         ("MemoryRead", "Memory"),
         ("MemoryWrite", "Memory"),
         ("InvokeAgent", "Agent"),
         ("CreateAgent", "Create"),
-        ("CreateTool", "Create"),
-        ("ListTools", "Tools"),
-        ("DeleteTool", "Delete"),
     ];
 
     fn tool_label(name: &str) -> &'static str {
@@ -237,13 +231,9 @@ mod display_regression {
             "Glob" => "Glob",
             "Bash" => "Shell",
             "WebFetch" => "Fetch",
-            "TodoRead" | "TodoWrite" => "Todo",
             "MemoryRead" | "MemoryWrite" => "Memory",
             "InvokeAgent" => "Agent",
             "CreateAgent" => "Create",
-            "CreateTool" => "Create",
-            "ListTools" => "Tools",
-            "DeleteTool" => "Delete",
             _ => "Tool",
         }
     }
@@ -268,8 +258,8 @@ mod display_regression {
     fn test_tool_count() {
         assert_eq!(
             KNOWN_TOOLS.len(),
-            18,
-            "Expected 18 known tools (update this test when adding tools)"
+            13,
+            "Expected 13 known tools (update this test when adding tools)"
         );
     }
 }

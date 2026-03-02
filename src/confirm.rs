@@ -19,15 +19,7 @@ pub enum Confirmation {
 }
 
 /// Tools that require user confirmation.
-const CONFIRM_TOOLS: &[&str] = &[
-    "Bash",
-    "Delete",
-    "Write",
-    "Edit",
-    "CreateTool",
-    "DeleteTool",
-    "WebFetch",
-];
+const CONFIRM_TOOLS: &[&str] = &["Bash", "Delete", "Write", "Edit", "WebFetch"];
 
 /// Check if a tool requires user confirmation (built-in tools only).
 #[allow(dead_code)]
@@ -37,9 +29,8 @@ pub fn needs_confirmation(tool_name: &str) -> bool {
 
 /// Check if a tool requires confirmation, including custom tool detection.
 /// Custom tools execute shell commands, so they always require confirmation.
-pub fn needs_confirmation_with_project(tool_name: &str, project_root: &std::path::Path) -> bool {
+pub fn needs_confirmation_with_project(tool_name: &str, _project_root: &std::path::Path) -> bool {
     CONFIRM_TOOLS.contains(&tool_name)
-        || crate::tools::constructor::is_custom_tool(project_root, tool_name)
 }
 
 /// Show a confirmation prompt for a tool action.
@@ -165,8 +156,6 @@ mod tests {
         assert!(needs_confirmation("Delete"));
         assert!(needs_confirmation("Write"));
         assert!(needs_confirmation("Edit"));
-        assert!(needs_confirmation("CreateTool"));
-        assert!(needs_confirmation("DeleteTool"));
         assert!(needs_confirmation("WebFetch"));
         assert!(!needs_confirmation("Read"));
         assert!(!needs_confirmation("List"));

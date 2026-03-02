@@ -134,15 +134,6 @@ pub fn tool_info(name: &str, args_json: &str) -> (&'static str, &'static str, St
             let short = truncate(&url, 60);
             (SKY_BLUE, "Fetch", short)
         }
-        "TodoRead" => (SILVER, "Todo", "reading tasks".to_string()),
-        "TodoWrite" => {
-            let count = args
-                .get("tasks")
-                .and_then(|v| v.as_array())
-                .map(|a| a.len())
-                .unwrap_or(0);
-            (AMBER, "Todo", format!("{count} tasks"))
-        }
         "InvokeAgent" => {
             let agent = json_str_multi(&args, &["agent_name", "name"]);
             (RUBY, "Agent", agent)
@@ -151,11 +142,6 @@ pub fn tool_info(name: &str, args_json: &str) -> (&'static str, &'static str, St
             let name = json_str_multi(&args, &["name"]);
             (VIOLET, "Create", format!("agent: {name}"))
         }
-        "CreateTool" => {
-            let name = json_str_multi(&args, &["name"]);
-            (VIOLET, "Create", format!("tool: {name}"))
-        }
-        "ListTools" => (SILVER, "Tools", "listing custom tools".to_string()),
         "MemoryRead" => (SILVER, "Memory", "reading memory".to_string()),
         "MemoryWrite" => {
             let scope = args
@@ -165,10 +151,6 @@ pub fn tool_info(name: &str, args_json: &str) -> (&'static str, &'static str, St
             let content = json_str_multi(&args, &["content"]);
             let short = truncate(&content, 40);
             (AMBER, "Memory", format!("{scope}: {short}"))
-        }
-        "DeleteTool" => {
-            let name = json_str_multi(&args, &["name"]);
-            (CRIMSON, "Delete", format!("tool: {name}"))
         }
         _ => (DIM, "Tool", name.to_string()),
     }
@@ -225,10 +207,10 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
     let border_color = match tool_name {
         "Read" => STEEL_BLUE,
         "List" | "WebFetch" => SKY_BLUE,
-        "Grep" | "Glob" | "TodoRead" | "MemoryRead" | "ListTools" => SILVER,
+        "Grep" | "Glob" | "MemoryRead" => SILVER,
         "Bash" => ORANGE,
-        "Write" | "Edit" | "TodoWrite" | "MemoryWrite" => AMBER,
-        "Delete" | "DeleteTool" => CRIMSON,
+        "Write" | "Edit" | "MemoryWrite" => AMBER,
+        "Delete" => CRIMSON,
         _ => DIM,
     };
 
@@ -266,7 +248,7 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                 }
             }
         }
-        "Write" | "Edit" | "TodoWrite" | "MemoryWrite" => {
+        "Write" | "Edit" | "MemoryWrite" => {
             for line in output.lines() {
                 if line.starts_with('+') && !line.starts_with("+++") {
                     println!("{CONTENT_INDENT}{border_color}│{RESET} \x1b[32m{line}\x1b[0m");
@@ -279,7 +261,7 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                 }
             }
         }
-        "Delete" | "DeleteTool" => {
+        "Delete" => {
             print_capped_output(output, border_color, 5);
         }
 
@@ -439,7 +421,7 @@ pub fn print_tool_output(tool_name: &str, output: &str) {
                 "{CONTENT_INDENT}{border_color}\u{2502}{RESET} {DIM}({line_count} lines, {char_count} chars fetched){RESET}"
             );
         }
-        "TodoRead" | "MemoryRead" | "ListTools" => {
+        "MemoryRead" => {
             // Show compact summary with a few lines
             let line_count = output.lines().count();
             print_capped_output(output, border_color, 8);

@@ -4,13 +4,11 @@
 //! Path validation is enforced here to prevent directory traversal.
 
 pub mod agent;
-pub mod constructor;
 pub mod file_tools;
 pub mod glob_tool;
 pub mod grep;
 pub mod memory;
 pub mod shell;
-pub mod todo;
 pub mod web_fetch;
 
 use anyhow::Result;
@@ -59,18 +57,7 @@ impl ToolRegistry {
         for def in web_fetch::definitions() {
             definitions.insert(def.name.clone(), def);
         }
-        for def in todo::definitions() {
-            definitions.insert(def.name.clone(), def);
-        }
         for def in memory::definitions() {
-            definitions.insert(def.name.clone(), def);
-        }
-        for def in constructor::definitions() {
-            definitions.insert(def.name.clone(), def);
-        }
-
-        // Load custom tools from agents/tools/
-        for def in constructor::load_custom_tool_definitions(&project_root) {
             definitions.insert(def.name.clone(), def);
         }
 
@@ -126,10 +113,6 @@ impl ToolRegistry {
             // Web
             "WebFetch" => web_fetch::web_fetch(&args).await,
 
-            // Task tracking
-            "TodoRead" => todo::todo_read(&self.project_root).await,
-            "TodoWrite" => todo::todo_write(&self.project_root, &args).await,
-
             // Memory
             "MemoryRead" => memory::memory_read(&self.project_root).await,
             "MemoryWrite" => memory::memory_write(&self.project_root, &args).await,
@@ -152,19 +135,7 @@ impl ToolRegistry {
                 };
             }
 
-            // Tool constructor
-            "CreateTool" => constructor::create_tool(&self.project_root, &args).await,
-            "ListTools" => constructor::list_custom_tools(&self.project_root).await,
-            "DeleteTool" => constructor::delete_custom_tool(&self.project_root, &args).await,
-
-            // Check custom tools
-            other => {
-                // Try to execute as a custom tool
-                match constructor::execute_custom_tool(&self.project_root, other, &args).await {
-                    Ok(output) => Ok(output),
-                    Err(_) => Err(anyhow::anyhow!("Unknown tool: {other}")),
-                }
-            }
+            other => Err(anyhow::anyhow!("Unknown tool: {other}")),
         };
 
         match result {
