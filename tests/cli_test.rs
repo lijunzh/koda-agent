@@ -28,9 +28,10 @@ fn test_cli_version() {
         stdout.contains("koda"),
         "Version output should contain 'koda': {stdout}"
     );
+    let version = env!("CARGO_PKG_VERSION");
     assert!(
-        stdout.contains("0.1.0"),
-        "Version output should contain '0.1.0': {stdout}"
+        stdout.contains(version),
+        "Version output should contain '{version}': {stdout}"
     );
 }
 

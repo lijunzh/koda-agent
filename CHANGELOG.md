@@ -4,6 +4,32 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.1] - 2025-03-02
+
+### Performance
+- Release binary size reduced from 14MB to 7.6MB (47% smaller)
+  - `strip = true` removes debug symbols
+  - `lto = true` enables link-time optimization across crates
+  - `codegen-units = 1` improves dead-code elimination
+  - `panic = "abort"` removes unwinding machinery
+
+### Removed
+- Deleted `clipboard.rs` (dead code since `/copy` removal)
+- Removed unused `ToolResult.success` field
+- Removed unused `keystore::get()`, `keystore::remove()`, `runtime_env::remove()`
+
+### Fixed
+- Windows: drag-and-drop image detection now recognizes `C:\` drive paths
+
+### Docs
+- README trimmed from 295 to 77 lines; detailed docs moved to DESIGN.md/FUTURE.md
+
+### CI/CD
+- Homebrew tap auto-update on release (`lijunzh/homebrew-koda`)
+- Install: `brew tap lijunzh/koda && brew install koda`
+
+---
+
 ## [0.1.0] - 2025-03-01
 
 **A high-performance AI coding agent built in Rust.** Single binary. Multi-provider. Zero dependencies.
