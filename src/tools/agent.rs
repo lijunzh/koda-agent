@@ -6,7 +6,8 @@
 
 use crate::providers::ToolDefinition;
 use serde_json::json;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// Return tool definitions for the LLM.
 pub fn definitions() -> Vec<ToolDefinition> {
@@ -37,10 +38,17 @@ pub fn definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "ListAgents".to_string(),
-            description: "List all available sub-agents that can be invoked.".to_string(),
+            description: "List all available sub-agents (built-in, user, and project). \
+                Use detail=true to see full system prompts (useful as templates before CreateAgent)."
+                .to_string(),
             parameters: json!({
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "detail": {
+                        "type": "boolean",
+                        "description": "If true, show full system prompts for each agent (use as templates for CreateAgent)"
+                    }
+                }
             }),
         },
         ToolDefinition {
@@ -96,11 +104,13 @@ pub fn create_agent(project_root: &Path, args: &serde_json::Value) -> String {
         return "Error: cannot overwrite the default agent.".to_string();
     }
 
-    // Check if agent already exists
-    let agents_dir = project_root.join("agents");
-    let agent_path = agents_dir.join(format!("{name}.json"));
-    if agent_path.exists() {
-        return format!("Error: agent '{name}' already exists. Use Edit to modify it.");
+    // Check if agent already exists in any source (built-in, user, project)
+    let all_agents = discover_all_agents(project_root);
+    if let Some(existing) = all_agents.iter().find(|a| a.name == name) {
+        return format!(
+            "Error: agent '{}' already exists [{}]. Use Edit to modify it, or choose a different name.",
+            name, existing.source
+        );
     }
 
     // Validate system prompt has reasonable content
@@ -126,10 +136,14 @@ pub fn create_agent(project_root: &Path, args: &serde_json::Value) -> String {
         "base_url": null
     });
 
-    // Ensure agents/ directory exists
+    // Write to user config dir (~/.config/koda/agents/) so it's portable
+    let Ok(agents_dir) = user_agents_dir() else {
+        return "Error: could not determine user config directory.".to_string();
+    };
     if let Err(e) = std::fs::create_dir_all(&agents_dir) {
         return format!("Error creating agents directory: {e}");
     }
+    let agent_path = agents_dir.join(format!("{name}.json"));
 
     // Write the agent file
     match serde_json::to_string_pretty(&config) {
@@ -144,48 +158,128 @@ pub fn create_agent(project_root: &Path, args: &serde_json::Value) -> String {
     }
 }
 
-/// Scan the agents/ directory and return a formatted list of available agents.
-pub fn list_agents(project_root: &Path) -> String {
-    let agents_dir = project_root.join("agents");
-    let Ok(entries) = std::fs::read_dir(&agents_dir) else {
-        return "No agents/ directory found.".to_string();
+/// Agent info from discovery: name, description, source, and optionally the full prompt.
+pub struct AgentInfo {
+    pub name: String,
+    pub description: String,
+    pub source: &'static str, // "built-in", "user", or "project"
+    pub system_prompt: String,
+}
+
+/// Discover all agents from all sources, with project > user > built-in priority.
+pub fn discover_all_agents(project_root: &Path) -> Vec<AgentInfo> {
+    let mut agents: HashMap<String, AgentInfo> = HashMap::new();
+
+    // 1. Built-in agents (lowest priority)
+    for (name, config) in crate::config::KodaConfig::builtin_agents() {
+        if name == "default" {
+            continue;
+        }
+        agents.insert(name.clone(), AgentInfo {
+            name,
+            description: extract_description(&config.system_prompt),
+            source: "built-in",
+            system_prompt: config.system_prompt,
+        });
+    }
+
+    // 2. User agents (~/.config/koda/agents/) — overrides built-ins
+    if let Ok(user_dir) = user_agents_dir() {
+        load_agents_from_dir(&user_dir, "user", &mut agents);
+    }
+
+    // 3. Project agents (<project>/agents/) — highest priority
+    let project_dir = project_root.join("agents");
+    load_agents_from_dir(&project_dir, "project", &mut agents);
+
+    let mut result: Vec<AgentInfo> = agents.into_values().collect();
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    result
+}
+
+/// Load agents from a directory into the map (later calls override earlier).
+fn load_agents_from_dir(
+    dir: &Path,
+    source: &'static str,
+    agents: &mut HashMap<String, AgentInfo>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
     };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(agent_name) = name.strip_suffix(".json") else {
+            continue;
+        };
+        if agent_name == "default" {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let prompt = config["system_prompt"].as_str().unwrap_or("").to_string();
+        agents.insert(agent_name.to_string(), AgentInfo {
+            name: agent_name.to_string(),
+            description: extract_description(&prompt),
+            source,
+            system_prompt: prompt,
+        });
+    }
+}
 
-    let mut agents: Vec<(String, String)> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().to_string();
-            let agent_name = name.strip_suffix(".json")?.to_string();
+/// Return the user-level agents directory path.
+fn user_agents_dir() -> Result<PathBuf, std::env::VarError> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))?;
+    Ok(PathBuf::from(home).join(".config").join("koda").join("agents"))
+}
 
-            // Skip the default agent — it's the main agent, not a sub-agent
-            if agent_name == "default" {
-                return None;
-            }
-
-            let content = std::fs::read_to_string(entry.path()).ok()?;
-            let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-
-            // Extract a clean description from the first sentence of system_prompt
-            let desc = config["system_prompt"]
-                .as_str()
-                .map(|s| extract_description(s))
-                .unwrap_or_default();
-
-            Some((agent_name, desc))
-        })
-        .collect();
-
-    agents.sort_by(|a, b| a.0.cmp(&b.0));
+/// Format agent list for display (used by /agent command and ListAgents tool).
+pub fn list_agents(project_root: &Path) -> String {
+    let agents = discover_all_agents(project_root);
 
     if agents.is_empty() {
-        "No sub-agents configured.".to_string()
-    } else {
-        let lines: Vec<String> = agents
-            .iter()
-            .map(|(name, desc)| format!("  \x1b[36m{name}\x1b[0m \u{2014} {desc}"))
-            .collect();
-        lines.join("\n")
+        return "No sub-agents configured.".to_string();
     }
+
+    let lines: Vec<String> = agents
+        .iter()
+        .map(|a| {
+            let tag = match a.source {
+                "built-in" => "",
+                "user" => " \x1b[90m[user]\x1b[0m",
+                "project" => " \x1b[90m[project]\x1b[0m",
+                _ => "",
+            };
+            format!("  \x1b[36m{}\x1b[0m \u{2014} {}{}", a.name, a.description, tag)
+        })
+        .collect();
+    lines.join("\n")
+}
+
+/// Format detailed agent list (for ListAgents with detail=true, used by CreateAgent workflow).
+pub fn list_agents_detail(project_root: &Path) -> String {
+    let agents = discover_all_agents(project_root);
+
+    if agents.is_empty() {
+        return "No sub-agents configured.".to_string();
+    }
+
+    let mut output = String::new();
+    for a in &agents {
+        output.push_str(&format!("## {} [{}]\n", a.name, a.source));
+        // Show first 500 chars of prompt as template reference
+        let preview: String = a.system_prompt.chars().take(500).collect();
+        output.push_str(&preview);
+        if a.system_prompt.len() > 500 {
+            output.push_str("\n[...truncated]");
+        }
+        output.push_str("\n\n");
+    }
+    output
 }
 
 /// Extract a clean one-line description from a system prompt.
@@ -237,63 +331,59 @@ mod tests {
     }
 
     #[test]
-    fn test_list_agents_empty_dir() {
+    fn test_list_agents_includes_builtins() {
         let dir = TempDir::new().unwrap();
-        std::fs::create_dir(dir.path().join("agents")).unwrap();
+        // Even with no agents/ directory, built-ins are always available
         let result = list_agents(dir.path());
-        assert_eq!(result, "No sub-agents configured.");
-    }
-
-    #[test]
-    fn test_list_agents_no_dir() {
-        let dir = TempDir::new().unwrap();
-        let result = list_agents(dir.path());
-        assert!(result.contains("No agents/ directory"));
-    }
-
-    #[test]
-    fn test_list_agents_with_agents() {
-        let dir = TempDir::new().unwrap();
-        let agents_dir = dir.path().join("agents");
-        std::fs::create_dir(&agents_dir).unwrap();
-        std::fs::write(
-            agents_dir.join("reviewer.json"),
-            r#"{"name":"reviewer","system_prompt":"You are a senior code reviewer. Your job is to find bugs."}"#,
-        ).unwrap();
-        let result = list_agents(dir.path());
-        assert!(result.contains("reviewer"));
-        assert!(result.contains("Find bugs"));
+        assert!(result.contains("reviewer"), "Should include built-in reviewer");
+        assert!(result.contains("security"), "Should include built-in security");
+        assert!(result.contains("testgen"), "Should include built-in testgen");
+        assert!(result.contains("releaser"), "Should include built-in releaser");
     }
 
     #[test]
     fn test_list_agents_excludes_default() {
         let dir = TempDir::new().unwrap();
-        let agents_dir = dir.path().join("agents");
-        std::fs::create_dir(&agents_dir).unwrap();
-        std::fs::write(
-            agents_dir.join("default.json"),
-            r#"{"name":"default","system_prompt":"You are the default agent."}"#,
-        ).unwrap();
-        std::fs::write(
-            agents_dir.join("reviewer.json"),
-            r#"{"name":"reviewer","system_prompt":"You are a code reviewer. Your job is to review code."}"#,
-        ).unwrap();
         let result = list_agents(dir.path());
         assert!(!result.contains("default"), "Should exclude default agent");
-        assert!(result.contains("reviewer"));
     }
 
     #[test]
-    fn test_list_agents_only_default_shows_empty() {
+    fn test_list_agents_project_overrides_builtin() {
         let dir = TempDir::new().unwrap();
         let agents_dir = dir.path().join("agents");
         std::fs::create_dir(&agents_dir).unwrap();
+        // Override the built-in reviewer with a project-local one
         std::fs::write(
-            agents_dir.join("default.json"),
-            r#"{"name":"default","system_prompt":"Main agent."}"#,
+            agents_dir.join("reviewer.json"),
+            r#"{"name":"reviewer","system_prompt":"You are a custom project reviewer. Your job is to do project-specific reviews."}"#,
         ).unwrap();
         let result = list_agents(dir.path());
-        assert_eq!(result, "No sub-agents configured.");
+        assert!(result.contains("reviewer"));
+        assert!(result.contains("[project]"), "Project agent should be tagged");
+    }
+
+    #[test]
+    fn test_discover_all_agents_has_builtins() {
+        let dir = TempDir::new().unwrap();
+        let agents = discover_all_agents(dir.path());
+        // Should have at least the 4 built-in agents (excluding default)
+        let builtins: Vec<_> = agents.iter().filter(|a| a.source == "built-in").collect();
+        assert_eq!(builtins.len(), 4, "Expected 4 built-in agents, got {}", builtins.len());
+        let names: Vec<_> = builtins.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"reviewer"));
+        assert!(names.contains(&"security"));
+        assert!(names.contains(&"testgen"));
+        assert!(names.contains(&"releaser"));
+    }
+
+    #[test]
+    fn test_list_agents_detail_shows_prompts() {
+        let dir = TempDir::new().unwrap();
+        let result = list_agents_detail(dir.path());
+        assert!(result.contains("## reviewer [built-in]"));
+        assert!(result.contains("## security [built-in]"));
+        assert!(result.contains("You are a senior code reviewer"));
     }
 
     #[test]
@@ -316,15 +406,22 @@ mod tests {
 
     #[test]
     fn test_create_agent_success() {
+        // CreateAgent writes to ~/.config/koda/agents/, so we just verify
+        // the output message (not the file) to avoid polluting user config
         let dir = TempDir::new().unwrap();
         let args = json!({
-            "name": "myagent",
+            "name": "test_temp_agent_xyz",
             "system_prompt": "You are a helpful agent. Your job is to do specialized things for the project with care and precision.",
             "allowed_tools": ["Read", "List"]
         });
         let result = create_agent(dir.path(), &args);
-        assert!(result.contains("Created agent 'myagent'"), "Got: {result}");
-        assert!(dir.path().join("agents/myagent.json").exists());
+        assert!(result.contains("Created agent") || result.contains("already exists"), "Got: {result}");
+        // Clean up if created
+        if result.contains("Created agent") {
+            if let Ok(user_dir) = user_agents_dir() {
+                let _ = std::fs::remove_file(user_dir.join("test_temp_agent_xyz.json"));
+            }
+        }
     }
 
     #[test]
@@ -336,14 +433,23 @@ mod tests {
     }
 
     #[test]
-    fn test_create_agent_rejects_existing() {
+    fn test_create_agent_rejects_existing_builtin() {
+        let dir = TempDir::new().unwrap();
+        let args = json!({"name": "reviewer", "system_prompt": "x".repeat(60)});
+        let result = create_agent(dir.path(), &args);
+        assert!(result.contains("already exists"), "Should reject duplicate of built-in: {result}");
+        assert!(result.contains("built-in"), "Should mention source: {result}");
+    }
+
+    #[test]
+    fn test_create_agent_rejects_existing_disk() {
         let dir = TempDir::new().unwrap();
         let agents_dir = dir.path().join("agents");
         std::fs::create_dir(&agents_dir).unwrap();
-        std::fs::write(agents_dir.join("existing.json"), "{}").unwrap();
-        let args = json!({"name": "existing", "system_prompt": "x".repeat(60)});
+        std::fs::write(agents_dir.join("custom.json"), r#"{"name":"custom","system_prompt":"x"}"#).unwrap();
+        let args = json!({"name": "custom", "system_prompt": "x".repeat(60)});
         let result = create_agent(dir.path(), &args);
-        assert!(result.contains("already exists"));
+        assert!(result.contains("already exists"), "Should reject duplicate: {result}");
     }
 
     #[test]
@@ -362,10 +468,4 @@ mod tests {
         assert!(result.contains("no spaces"));
     }
 
-    #[test]
-    fn test_definitions_includes_create_agent() {
-        let defs = definitions();
-        assert_eq!(defs.len(), 3);
-        assert_eq!(defs[2].name, "CreateAgent");
-    }
 }

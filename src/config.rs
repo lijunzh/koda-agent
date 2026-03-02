@@ -122,14 +122,24 @@ pub struct KodaConfig {
 
 impl KodaConfig {
     /// Load config from the agent JSON file.
+    /// Search order: project agents/ → user ~/.config/koda/agents/ → built-in (embedded).
     pub fn load(project_root: &Path, agent_name: &str) -> Result<Self> {
-        let agents_dir = Self::find_agents_dir(project_root)?;
-        let agent_file = agents_dir.join(format!("{agent_name}.json"));
+        let agents_dir = Self::find_agents_dir(project_root)
+            .unwrap_or_else(|_| PathBuf::from("agents"));
 
-        let agent_json = std::fs::read_to_string(&agent_file)
-            .with_context(|| format!("Failed to read agent config: {agent_file:?}"))?;
-        let agent: AgentConfig = serde_json::from_str(&agent_json)
-            .with_context(|| format!("Failed to parse agent config: {agent_file:?}"))?;
+        // 1. Try project-local or user-level agent file on disk
+        let agent_file = agents_dir.join(format!("{agent_name}.json"));
+        let agent: AgentConfig = if agent_file.exists() {
+            let json = std::fs::read_to_string(&agent_file)
+                .with_context(|| format!("Failed to read agent config: {agent_file:?}"))?;
+            serde_json::from_str(&json)
+                .with_context(|| format!("Failed to parse agent config: {agent_file:?}"))?
+        } else if let Some(builtin) = Self::load_builtin(agent_name) {
+            // 2. Fall back to embedded built-in agent
+            builtin
+        } else {
+            anyhow::bail!("Agent '{agent_name}' not found (checked disk and built-ins)");
+        };
 
         let default_url = agent
             .base_url
@@ -178,9 +188,34 @@ impl KodaConfig {
         self
     }
 
-    /// Default agent configuration, embedded at compile time so `cargo install` works
-    /// out of the box without needing to ship the `agents/` directory separately.
-    const DEFAULT_AGENT_JSON: &str = include_str!("../agents/default.json");
+    /// Built-in agent configs, embedded at compile time.
+    /// These are always available regardless of disk state.
+    const BUILTIN_AGENTS: &[(&str, &str)] = &[
+        ("default", include_str!("../agents/default.json")),
+        ("reviewer", include_str!("../agents/reviewer.json")),
+        ("security", include_str!("../agents/security.json")),
+        ("testgen", include_str!("../agents/testgen.json")),
+        ("releaser", include_str!("../agents/releaser.json")),
+    ];
+
+    /// Try to load a built-in (embedded) agent by name.
+    pub fn load_builtin(name: &str) -> Option<AgentConfig> {
+        Self::BUILTIN_AGENTS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .and_then(|(_, json)| serde_json::from_str(json).ok())
+    }
+
+    /// Return all built-in agent configs (name, parsed config).
+    pub fn builtin_agents() -> Vec<(String, AgentConfig)> {
+        Self::BUILTIN_AGENTS
+            .iter()
+            .filter_map(|(name, json)| {
+                let config: AgentConfig = serde_json::from_str(json).ok()?;
+                Some((name.to_string(), config))
+            })
+            .collect()
+    }
 
     /// Create a minimal config for testing.
     #[cfg(test)]
@@ -197,12 +232,14 @@ impl KodaConfig {
         }
     }
 
-    /// Locate the agents directory.
+    /// Locate the agents directory on disk (for project/user overrides).
     ///
     /// Search order:
     /// 1. `<project_root>/agents/`  — repo-local agents
-    /// 2. Next to the binary        — for pre-built distributions
-    /// 3. `~/.config/koda/agents/` — user-level config (auto-bootstrapped)
+    /// 2. `~/.config/koda/agents/` — user-level agents
+    ///
+    /// Built-in agents are always available from embedded configs,
+    /// so this may return Err if no disk directory exists (that's fine).
     fn find_agents_dir(project_root: &Path) -> Result<PathBuf> {
         // 1. Project-local
         let local = project_root.join("agents");
@@ -210,25 +247,14 @@ impl KodaConfig {
             return Ok(local);
         }
 
-        // 2. Next to the binary
-        let exe_dir = std::env::current_exe()?
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-        let exe_agents = exe_dir.join("agents");
-        if exe_agents.is_dir() {
-            return Ok(exe_agents);
-        }
-
-        // 3. User config dir (~/.config/koda/agents/)
+        // 2. User config dir (~/.config/koda/agents/)
         let config_agents = Self::user_agents_dir()?;
         if config_agents.is_dir() {
             return Ok(config_agents);
         }
 
-        // None found — bootstrap the user config dir with the embedded default agent
-        Self::bootstrap_default_agent(&config_agents)?;
-        Ok(config_agents)
+        // No disk directory found — built-in agents still work
+        anyhow::bail!("No agents directory on disk (built-in agents are still available)")
     }
 
     /// Return the user-level agents directory path (`~/.config/koda/agents/`).
@@ -240,19 +266,6 @@ impl KodaConfig {
         Ok(home.join(".config").join("koda").join("agents"))
     }
 
-    /// Create `~/.config/koda/agents/default.json` from the embedded template.
-    fn bootstrap_default_agent(agents_dir: &Path) -> Result<()> {
-        std::fs::create_dir_all(agents_dir)
-            .with_context(|| format!("Failed to create agents directory: {agents_dir:?}"))?;
-        let dest = agents_dir.join("default.json");
-        std::fs::write(&dest, Self::DEFAULT_AGENT_JSON)
-            .with_context(|| format!("Failed to write default agent config: {dest:?}"))?;
-        eprintln!(
-            "✨ First run detected — created default agent config at {}",
-            dest.display()
-        );
-        Ok(())
-    }
 }
 
 #[cfg(test)]

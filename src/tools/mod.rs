@@ -135,7 +135,14 @@ impl ToolRegistry {
             "MemoryWrite" => memory::memory_write(&self.project_root, &args).await,
 
             // Agent tools
-            "ListAgents" => Ok(agent::list_agents(&self.project_root)),
+            "ListAgents" => {
+                let detail = args["detail"].as_bool().unwrap_or(false);
+                if detail {
+                    Ok(agent::list_agents_detail(&self.project_root))
+                } else {
+                    Ok(agent::list_agents(&self.project_root))
+                }
+            }
             "CreateAgent" => Ok(agent::create_agent(&self.project_root, &args)),
             "InvokeAgent" => {
                 // Handled externally by the event loop (needs access to config/db).
