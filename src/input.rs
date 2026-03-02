@@ -355,6 +355,11 @@ fn looks_like_file_path(token: &str) -> bool {
         || cleaned.starts_with("~/")
         || cleaned.starts_with("./")
         || cleaned.starts_with("..")
+        // Windows absolute paths: C:\ or D:\
+        || (cleaned.len() >= 3
+            && cleaned.as_bytes()[0].is_ascii_alphabetic()
+            && cleaned.as_bytes()[1] == b':'
+            && (cleaned.as_bytes()[2] == b'\\' || cleaned.as_bytes()[2] == b'/'))
 }
 
 /// Try to load an image file, returning the ImageData if successful.
@@ -729,6 +734,9 @@ mod tests {
         assert!(looks_like_file_path("./relative/img.png"));
         assert!(looks_like_file_path("../parent/img.png"));
         assert!(looks_like_file_path("'/quoted/path.png'"));
+        // Windows paths
+        assert!(looks_like_file_path("C:\\Users\\test\\img.png"));
+        assert!(looks_like_file_path("D:/tmp/img.png"));
         assert!(!looks_like_file_path("just-a-word"));
         assert!(!looks_like_file_path("relative.png"));
     }
@@ -784,8 +792,16 @@ mod tests {
 
     #[test]
     fn test_resolve_bare_path_absolute() {
-        let resolved = resolve_bare_path("/tmp/test.png");
-        assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+        #[cfg(unix)]
+        {
+            let resolved = resolve_bare_path("/tmp/test.png");
+            assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+        }
+        #[cfg(windows)]
+        {
+            let resolved = resolve_bare_path("C:\\tmp\\test.png");
+            assert_eq!(resolved, Some(PathBuf::from("C:\\tmp\\test.png")));
+        }
     }
 
     #[test]
@@ -802,8 +818,16 @@ mod tests {
 
     #[test]
     fn test_resolve_bare_path_quoted() {
-        let resolved = resolve_bare_path("'/tmp/test.png'");
-        assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+        #[cfg(unix)]
+        {
+            let resolved = resolve_bare_path("'/tmp/test.png'");
+            assert_eq!(resolved, Some(PathBuf::from("/tmp/test.png")));
+        }
+        #[cfg(windows)]
+        {
+            let resolved = resolve_bare_path("'C:\\tmp\\test.png'");
+            assert_eq!(resolved, Some(PathBuf::from("C:\\tmp\\test.png")));
+        }
     }
 
     #[test]
