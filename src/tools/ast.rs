@@ -1,10 +1,10 @@
 use anyhow::Result;
 use serde_json::Value;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
-use crate::providers::ToolDefinition;
 use super::safe_resolve_path;
+use crate::providers::ToolDefinition;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![ToolDefinition {
@@ -55,13 +55,21 @@ pub async fn ast_analysis(project_root: &Path, args: &Value) -> Result<String> {
         Err(e) => return Ok(format!("Error: Failed to read file: {}", e)),
     };
 
-    let extension = absolute_path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let extension = absolute_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
 
     let mut parser = tree_sitter::Parser::new();
     let language = match extension {
         "rs" => tree_sitter_rust::LANGUAGE.into(),
         "py" => tree_sitter_python::LANGUAGE.into(),
-        _ => return Ok(format!("Error: Unsupported file type '.{}'. AstAnalysis currently supports .rs and .py", extension)),
+        _ => {
+            return Ok(format!(
+                "Error: Unsupported file type '.{}'. AstAnalysis currently supports .rs and .py",
+                extension
+            ));
+        }
     };
 
     if let Err(e) = parser.set_language(&language) {
@@ -75,17 +83,23 @@ pub async fn ast_analysis(project_root: &Path, args: &Value) -> Result<String> {
 
     // For now, we will just implement a simple structure dump for 'analyze_file'
     // by manually traversing the tree, before writing full Tree-sitter Queries.
-    
+
     if action == "analyze_file" {
         return analyze_file_structure(&tree, source_code.as_bytes(), extension);
     } else if action == "get_call_graph" {
-        return Ok("The 'get_call_graph' action is still under development in Phase 1.".to_string());
+        return Ok(
+            "The 'get_call_graph' action is still under development in Phase 1.".to_string(),
+        );
     }
 
     Ok(format!("Error: Unknown action '{}'", action))
 }
 
-fn analyze_file_structure(tree: &tree_sitter::Tree, source: &[u8], extension: &str) -> Result<String> {
+fn analyze_file_structure(
+    tree: &tree_sitter::Tree,
+    source: &[u8],
+    extension: &str,
+) -> Result<String> {
     let mut output = String::new();
     output.push_str("### AST Structure Summary\n\n");
 
@@ -95,7 +109,7 @@ fn analyze_file_structure(tree: &tree_sitter::Tree, source: &[u8], extension: &s
     let (func_type, class_type, name_field) = match extension {
         "rs" => ("function_item", "struct_item", "name"),
         "py" => ("function_definition", "class_definition", "name"),
-        _ => ("","",""),
+        _ => ("", "", ""),
     };
 
     let mut found_functions = Vec::new();
@@ -103,41 +117,59 @@ fn analyze_file_structure(tree: &tree_sitter::Tree, source: &[u8], extension: &s
 
     // A very simple recursive traversal
     fn traverse(
-        cursor: &mut tree_sitter::TreeCursor, 
-        source: &[u8], 
-        func_type: &str, 
-        class_type: &str, 
+        cursor: &mut tree_sitter::TreeCursor,
+        source: &[u8],
+        func_type: &str,
+        class_type: &str,
         name_field: &str,
         funcs: &mut Vec<String>,
-        classes: &mut Vec<String>
+        classes: &mut Vec<String>,
     ) {
         let node = cursor.node();
         let kind = node.kind();
 
-        if kind == func_type {
-            if let Some(name_node) = node.child_by_field_name(name_field) {
-                if let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()]) {
-                    funcs.push(format!("- `{}` (Line {})", name, name_node.start_position().row + 1));
-                }
-            }
-        } else if kind == class_type {
-            if let Some(name_node) = node.child_by_field_name(name_field) {
-                if let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()]) {
-                    classes.push(format!("- `{}` (Line {})", name, name_node.start_position().row + 1));
-                }
-            }
+        if kind == func_type
+            && let Some(name_node) = node.child_by_field_name(name_field)
+            && let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()])
+        {
+            funcs.push(format!(
+                "- `{}` (Line {})",
+                name,
+                name_node.start_position().row + 1
+            ));
+        } else if kind == class_type
+            && let Some(name_node) = node.child_by_field_name(name_field)
+            && let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()])
+        {
+            classes.push(format!(
+                "- `{}` (Line {})",
+                name,
+                name_node.start_position().row + 1
+            ));
         }
 
         if cursor.goto_first_child() {
-            traverse(cursor, source, func_type, class_type, name_field, funcs, classes);
+            traverse(
+                cursor, source, func_type, class_type, name_field, funcs, classes,
+            );
             while cursor.goto_next_sibling() {
-                traverse(cursor, source, func_type, class_type, name_field, funcs, classes);
+                traverse(
+                    cursor, source, func_type, class_type, name_field, funcs, classes,
+                );
             }
             cursor.goto_parent();
         }
     }
 
-    traverse(&mut cursor, source, func_type, class_type, name_field, &mut found_functions, &mut found_classes);
+    traverse(
+        &mut cursor,
+        source,
+        func_type,
+        class_type,
+        name_field,
+        &mut found_functions,
+        &mut found_classes,
+    );
 
     if !found_classes.is_empty() {
         output.push_str("**Classes / Structs:**\n");
