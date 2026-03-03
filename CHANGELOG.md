@@ -4,7 +4,7 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.1] - 2025-03-02
+## [0.1.1] - 2026-03-02
 
 ### Performance
 - Release binary size reduced from 14MB to 7.6MB (47% smaller)
@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [0.1.0] - 2025-03-01
+## [0.1.0] - 2026-03-01
 
 **A high-performance AI coding agent built in Rust.** Single binary. Multi-provider. Zero dependencies.
 

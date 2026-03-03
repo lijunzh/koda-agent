@@ -68,12 +68,10 @@ Koda coordinates sub-agents via standard Tool Calling:
 - **Independent Execution:** Sub-agents run in isolated loops with their own config, model, and tool access.
 - **Result Coordination:** Sub-agent output is returned as a tool result string.
 
-### 3.6. Dynamic Tool Construction
-The `CreateTool` meta-tool allows the LLM (or user) to define new tools at runtime:
-- **Persisted as JSON** in `agents/tools/<ToolName>.json`
-- **Shell command templates** with `{{param}}` placeholders
-- **Loaded automatically** on startup alongside built-in tools
-- **Safety guardrails** prevent overriding built-in tools
+### 3.6. Reasoning & Transparency
+The `ShareReasoning` tool allows the LLM to share internal reasoning
+with the user during complex decision-making. It is automatically
+disabled when native thinking (e.g. Anthropic extended thinking) is active.
 
 ### 3.7. Safety & Path Validation
 - **Path Normalization:** `path-clean` prevents directory traversal attacks.
@@ -96,22 +94,18 @@ All tools use **PascalCase** names (inspired by Claude Code):
 | `Glob` | `glob_tool` | Find files by glob pattern |
 | `Bash` | `shell` | Execute shell commands with timeout |
 | `WebFetch` | `web_fetch` | Fetch URL content, strip HTML |
-| `TodoRead` | `todo` | Read task list from `~/.config/koda/todo.md` |
-| `TodoWrite` | `todo` | Write/update tasks (project-scoped or global) |
 | `MemoryRead` | `memory` | Read project & global memory |
 | `MemoryWrite` | `memory` | Save insights to persistent memory |
+| `ShareReasoning` | `reasoning` | Share internal reasoning with the user |
 | `InvokeAgent` | `agent` | Delegate to a sub-agent |
 | `ListAgents` | `agent` | List available sub-agents |
 | `CreateAgent` | `agent` | Create a new sub-agent (with validation) |
-| `CreateTool` | `constructor` | Define a new custom tool |
-| `ListTools` | `constructor` | List custom tools |
-| `DeleteTool` | `constructor` | Remove a custom tool |
 
 ### 4.2. Tool Registry
 Tools are registered in a `HashMap<String, ToolDefinition>` at startup. The registry:
 1. Loads all built-in tool definitions from each module
-2. Scans `agents/tools/` for custom tool JSON files
-3. Custom tools are executed by expanding `{{param}}` placeholders in their command template and running via `Bash`
+2. Provides `get_definitions()` with optional allow-list filtering
+3. Routes tool execution via name-matched dispatch in `execute()`
 
 ### 4.3. Tool Display
 Each tool has a semantic color and short label shown during execution:
@@ -119,15 +113,16 @@ Each tool has a semantic color and short label shown during execution:
 | Category | Color | Tools |
 |----------|-------|-------|
 | Read/navigate | Steel blue, Sky blue | `Read`, `List`, `WebFetch` |
-| Modify | Amber | `Write`, `Edit`, `TodoWrite` |
-| Search | Silver | `Grep`, `Glob`, `TodoRead`, `ListTools` |
+| Modify | Amber | `Write`, `Edit` |
+| Search | Silver | `Grep`, `Glob` |
 | Execute | Orange | `Bash` |
-| Danger | Crimson | `Delete`, `DeleteTool` |
-| AI/meta | Violet, Ruby | `CreateTool`, `CreateAgent`, `InvokeAgent` |
+| Danger | Crimson | `Delete` |
+| Memory | Teal | `MemoryRead`, `MemoryWrite` |
+| AI/meta | Violet, Ruby | `CreateAgent`, `InvokeAgent`, `ListAgents`, `ShareReasoning` |
 
 ### 4.4. Confirmation System
 Destructive tools require user confirmation before execution:
-- `Bash`, `Delete`, `Write`, `Edit`, `CreateTool`, `DeleteTool`
+- `Bash`, `Delete`, `Write`, `Edit`, `WebFetch`
 - Three options: ✓ Approve, ✗ Reject, 💬 Feedback (reject with instructions)
 
 ## 5. The Core Event Loop (State Machine)
@@ -199,18 +194,16 @@ koda/
 │       ├── glob_tool.rs     # Glob
 │       ├── shell.rs         # Bash
 │       ├── web_fetch.rs     # WebFetch
-│       ├── todo.rs          # TodoRead, TodoWrite
-│       ├── agent.rs         # InvokeAgent, ListAgents
+│       ├── agent.rs         # InvokeAgent, ListAgents, CreateAgent
 │       ├── memory.rs        # MemoryRead, MemoryWrite
-│       └── constructor.rs   # CreateTool, ListTools, DeleteTool
+│       └── reasoning.rs     # ShareReasoning
 ├── tests/
 │   ├── file_tools_test.rs   # File operation integration tests
-│   ├── new_tools_test.rs    # Glob, WebFetch, Todo, Constructor tests
+│   ├── new_tools_test.rs    # Glob, WebFetch, tool naming tests
 │   ├── regression_test.rs   # Command, display, naming regression tests
 │   └── cli_test.rs          # Binary invocation tests (--help, --version)
 └── agents/
-    ├── default.json         # Default agent configuration
-    └── tools/               # Custom tools (created via CreateTool)
+    └── default.json         # Default agent configuration
 ```
 
 ## 8. Configuration & Paths
@@ -229,7 +222,7 @@ koda/
 | `.koda.db` | SQLite database (sessions, messages, tool calls) |
 | `.koda_logs/` | Debug log files (tracing-appender) |
 | `agents/` | Project-specific agent configs |
-| `agents/tools/` | Custom tools (JSON, created via CreateTool) |
+| `agents/` | Sub-agent configurations (JSON) |
 | `MEMORY.md` | Semantic memory (injected into system prompt) |
 
 ### 8.3. Environment Variables

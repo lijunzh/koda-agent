@@ -24,7 +24,6 @@ mod repl_commands {
             "/sessions" => "ListSessions",
             "/memory" => "Handled",
 
-            "/paste" => "Handled",
             "/compact" => "Compact",
             "/agent" => "Handled",
             _ => "NotACommand",
@@ -55,7 +54,6 @@ mod repl_commands {
         assert_eq!(dispatch("/memory add test"), "Handled");
         assert_eq!(dispatch("/memory global test"), "Handled");
 
-        assert_eq!(dispatch("/paste"), "Handled");
         assert_eq!(dispatch("/compact"), "Compact");
         assert_eq!(dispatch("/agent"), "Handled");
     }
@@ -210,7 +208,9 @@ mod display_regression {
         ("WebFetch", "Fetch"),
         ("MemoryRead", "Memory"),
         ("MemoryWrite", "Memory"),
+        ("ShareReasoning", "Tool"),
         ("InvokeAgent", "Agent"),
+        ("ListAgents", "Tool"),
         ("CreateAgent", "Create"),
     ];
 
@@ -252,8 +252,8 @@ mod display_regression {
     fn test_tool_count() {
         assert_eq!(
             KNOWN_TOOLS.len(),
-            13,
-            "Expected 13 known tools (update this test when adding tools)"
+            15,
+            "Expected 15 known tools (update this test when adding tools)"
         );
     }
 }

@@ -21,12 +21,6 @@ pub enum Confirmation {
 /// Tools that require user confirmation.
 const CONFIRM_TOOLS: &[&str] = &["Bash", "Delete", "Write", "Edit", "WebFetch"];
 
-/// Check if a tool requires user confirmation (built-in tools only).
-#[allow(dead_code)]
-pub fn needs_confirmation(tool_name: &str) -> bool {
-    CONFIRM_TOOLS.contains(&tool_name)
-}
-
 /// Check if a tool requires confirmation.
 pub fn needs_confirmation_with_project(tool_name: &str, project_root: &std::path::Path) -> bool {
     let _ = project_root;
@@ -139,14 +133,6 @@ pub fn describe_action(tool_name: &str, args: &serde_json::Value) -> String {
             };
             format!("Edit file: \x1b[1m{path}\x1b[0m")
         }
-        "CreateTool" => {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-            format!("Create tool: \x1b[1m{name}\x1b[0m")
-        }
-        "DeleteTool" => {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-            format!("Delete tool: \x1b[1m{name}\x1b[0m")
-        }
         "WebFetch" => {
             let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("?");
             format!("Fetch URL: \x1b[1m{url}\x1b[0m")
@@ -162,14 +148,15 @@ mod tests {
 
     #[test]
     fn test_needs_confirmation() {
-        assert!(needs_confirmation("Bash"));
-        assert!(needs_confirmation("Delete"));
-        assert!(needs_confirmation("Write"));
-        assert!(needs_confirmation("Edit"));
-        assert!(needs_confirmation("WebFetch"));
-        assert!(!needs_confirmation("Read"));
-        assert!(!needs_confirmation("List"));
-        assert!(!needs_confirmation("Grep"));
+        let root = std::path::Path::new("/tmp");
+        assert!(needs_confirmation_with_project("Bash", root));
+        assert!(needs_confirmation_with_project("Delete", root));
+        assert!(needs_confirmation_with_project("Write", root));
+        assert!(needs_confirmation_with_project("Edit", root));
+        assert!(needs_confirmation_with_project("WebFetch", root));
+        assert!(!needs_confirmation_with_project("Read", root));
+        assert!(!needs_confirmation_with_project("List", root));
+        assert!(!needs_confirmation_with_project("Grep", root));
     }
 
     #[test]

@@ -231,6 +231,7 @@ mod naming_convention {
         "WebFetch",
         "MemoryRead",
         "MemoryWrite",
+        "ShareReasoning",
         "InvokeAgent",
         "ListAgents",
         "CreateAgent",
@@ -266,7 +267,7 @@ mod naming_convention {
 
     #[test]
     fn test_expected_tool_count() {
-        // 16 built-in tools as of this version
-        assert_eq!(BUILTIN_TOOLS.len(), 14);
+        // 15 built-in tools as of this version
+        assert_eq!(BUILTIN_TOOLS.len(), 15);
     }
 }

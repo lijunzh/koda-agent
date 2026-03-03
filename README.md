@@ -28,7 +28,7 @@ echo "explain this" | koda        # Piped input
 
 ## What's Inside
 
-- **16 built-in tools** — file ops, search, shell, web fetch, memory, agents
+- **15 built-in tools** — file ops, search, shell, web fetch, memory, agents
 - **6 LLM providers** — LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
 - **5 embedded agents** — default, code reviewer, security auditor, test writer, release engineer
 - **Parallel execution** — concurrent tool calls and sub-agent orchestration
