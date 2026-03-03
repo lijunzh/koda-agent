@@ -338,7 +338,9 @@ impl ConditionalEventHandler for CtrlCClearHandler {
 // ── Shift+Tab mode cycling handler ────────────────────────────
 
 /// Cycles approval mode on Shift+Tab: Plan → Normal → Yolo.
-/// Prints a one-line notification and re-renders the prompt.
+/// When the input buffer is empty, submits it to force a prompt refresh
+/// (the main loop skips empty input). When text is present, just cycles
+/// the mode silently — the prompt updates on next submit.
 pub struct ShiftTabModeHandler {
     shared_mode: crate::approval::SharedMode,
 }
@@ -355,22 +357,18 @@ impl ConditionalEventHandler for ShiftTabModeHandler {
         _evt: &Event,
         _n: RepeatCount,
         _positive: bool,
-        _ctx: &EventContext,
+        ctx: &EventContext,
     ) -> Option<Cmd> {
-        let new_mode = crate::approval::cycle_mode(&self.shared_mode);
-        let (icon, color) = match new_mode {
-            crate::approval::ApprovalMode::Plan => ("\u{1f4cb}", "\x1b[33m"),   // 📋 yellow
-            crate::approval::ApprovalMode::Normal => ("\u{1f6e1}\u{fe0f}", "\x1b[32m"), // 🛡️ green
-            crate::approval::ApprovalMode::Yolo => ("\u{26a1}", "\x1b[31m"),    // ⚡ red
-        };
-        // Overwrite the current prompt line with a compact notification,
-        // then Repaint redraws the prompt below it.
-        eprint!(
-            "\r\x1b[K  {icon} {color}{}\x1b[0m\n",
-            new_mode.label(),
-        );
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-        Some(Cmd::Repaint)
+        crate::approval::cycle_mode(&self.shared_mode);
+
+        if ctx.line().is_empty() {
+            // Submit empty line → main loop skips it → readline re-renders
+            // with the updated mode in the prompt. No notification needed.
+            Some(Cmd::AcceptLine)
+        } else {
+            // User has typed something — don't lose it. Mode updates on next submit.
+            Some(Cmd::Repaint)
+        }
     }
 }
 

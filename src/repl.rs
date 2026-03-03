@@ -371,13 +371,14 @@ pub fn format_prompt(model: &str, mode: crate::approval::ApprovalMode) -> String
     } else {
         String::new()
     };
-    let mode_tag = match mode {
-        crate::approval::ApprovalMode::Plan => " \x1b[33m[plan]\x1b[0m",
-        crate::approval::ApprovalMode::Normal => "",
-        crate::approval::ApprovalMode::Yolo => " \x1b[31m[yolo]\x1b[0m",
+    // Mode embedded in logo: [Koda 🐻] / [Koda 📋] / [Koda ⚡]
+    let (logo_icon, logo_color) = match mode {
+        crate::approval::ApprovalMode::Plan => ("\u{1f4cb}", "\x1b[33m"),   // 📋 yellow
+        crate::approval::ApprovalMode::Normal => ("\u{1f43b}", "\x1b[36m"), // 🐻 cyan (default)
+        crate::approval::ApprovalMode::Yolo => ("\u{26a1}", "\x1b[31m"),    // ⚡ red
     };
     format!(
-        "\x1b[36m[Koda \u{1f43b}]\x1b[0m \x1b[90m[{model}]\x1b[0m \x1b[34m({cwd})\x1b[0m{ctx_warn}{mode_tag} \x1b[32m\u{276f}\x1b[0m "
+        "{logo_color}[Koda {logo_icon}]\x1b[0m \x1b[90m[{model}]\x1b[0m \x1b[34m({cwd})\x1b[0m{ctx_warn} \x1b[32m\u{276f}\x1b[0m "
     )
 }
 
