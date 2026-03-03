@@ -21,7 +21,48 @@ Koda 🐻 (Crate: `koda-agent`) is a high-performance, locally-focused AI coding
 | File System | `ignore` | Respects `.gitignore` during scans |
 | File Globbing | `glob` | Pattern-based file discovery |
 
-## 3. Core Architectural Concepts
+## 3. Design Principles
+
+### Philosophy
+Koda is a personal coding agent — built for a single developer at a keyboard, not
+for enterprise teams or platform integrations.
+
+1. **Zero runtime dependencies** — single compiled binary, ships everywhere.
+2. **Built-in first for the core coding loop** — Read/Write/Edit/Bash/Grep cover ~95%
+   of daily coding tasks. MCP fills the rest for domain-specific needs.
+3. **MCP for everything else** — databases, cloud APIs, browser automation, docs.
+   Don't bloat the binary with features that belong in MCP servers.
+4. **Stay lean** — YAGNI. Complexity is a cost. Every line must earn its place.
+
+### Built-in vs MCP Decision Rule
+
+**Build as a built-in tool if ALL of these are true:**
+- Used in >50% of coding sessions (daily driver)
+- Latency-sensitive (called frequently in loops)
+- Small implementation (<200 lines)
+- Zero external dependencies
+
+**Defer to MCP if ANY of these are true:**
+- Domain-specific (databases, cloud, Slack, GitHub API)
+- Requires external runtime (node, python, docker)
+- Large implementation (>500 lines)
+- Already exists as a quality community MCP server
+
+---
+
+## 4. Security Audit — 2025-04-01
+
+**RUSTSEC-2023-0071 (Medium 5.9):** `rsa` v0.9.10 via `sqlx → sqlx-mysql`.
+Marvin Attack timing sidechannel. No fixed upstream yet. Koda uses SQLite
+primarily — low risk. Monitor for upstream fix.
+
+**RUSTSEC-2025-0141:** `bincode` unmaintained (via `syntect`). No CVE. Stable.
+
+**RUSTSEC-2025-0119:** `number_prefix` unmaintained (via `indicatif`). No CVE. Stable.
+
+---
+
+## 5. Core Architectural Concepts
 
 ### 3.1. Single Binary CLI (Monolith)
 Koda is a single compiled binary. Unlike daemon-based tools, it is invoked once for an interactive session. State persistence across terminal restarts is achieved through a local SQLite database, providing the feeling of a persistent agent without background process overhead.
@@ -78,9 +119,9 @@ disabled when native thinking (e.g. Anthropic extended thinking) is active.
 - **Host Execution:** Tools run as child processes with user permissions.
 - **API Key Security:** Keys stored in `~/.config/koda/keys.toml` (chmod 600).
 
-## 4. Tool System
+## 6. Tool System
 
-### 4.1. Tool Naming Convention
+### 6.1. Tool Naming Convention
 All tools use **PascalCase** names (inspired by Claude Code):
 
 | Tool | Module | Description |
@@ -101,13 +142,13 @@ All tools use **PascalCase** names (inspired by Claude Code):
 | `ListAgents` | `agent` | List available sub-agents |
 | `CreateAgent` | `agent` | Create a new sub-agent (with validation) |
 
-### 4.2. Tool Registry
+### 6.2. Tool Registry
 Tools are registered in a `HashMap<String, ToolDefinition>` at startup. The registry:
 1. Loads all built-in tool definitions from each module
 2. Provides `get_definitions()` with optional allow-list filtering
 3. Routes tool execution via name-matched dispatch in `execute()`
 
-### 4.3. Tool Display
+### 6.3. Tool Display
 Each tool has a semantic color and short label shown during execution:
 
 | Category | Color | Tools |
@@ -120,12 +161,12 @@ Each tool has a semantic color and short label shown during execution:
 | Memory | Teal | `MemoryRead`, `MemoryWrite` |
 | AI/meta | Violet, Ruby | `CreateAgent`, `InvokeAgent`, `ListAgents`, `ShareReasoning` |
 
-### 4.4. Confirmation System
+### 6.4. Confirmation System
 Destructive tools require user confirmation before execution:
 - `Bash`, `Delete`, `Write`, `Edit`, `WebFetch`
 - Three options: ✓ Approve, ✗ Reject, 💬 Feedback (reject with instructions)
 
-## 5. The Core Event Loop (State Machine)
+## 7. The Core Event Loop (State Machine)
 ```
 1. Init       → Parse CLI, load config, init SQLite
 2. Prompt     → Receive user input (with completions, @file refs)
@@ -137,7 +178,7 @@ Destructive tools require user confirmation before execution:
 7. Loop       → Feed tool results back to step 4
 ```
 
-## 6. Database Schema
+## 8. Database Schema
 ```sql
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -159,7 +200,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 ```
 
-## 7. Project Directory Layout
+## 9. Project Directory Layout
 ```text
 koda/
 ├── Cargo.toml
@@ -206,9 +247,9 @@ koda/
     └── default.json         # Default agent configuration
 ```
 
-## 8. Configuration & Paths
+## 10. Configuration & Paths
 
-### 8.1. User-Level Config (`~/.config/koda/`)
+### 12.1. User-Level Config (`~/.config/koda/`)
 | Path | Purpose |
 |------|---------|
 | `agents/` | User-level agent configs (auto-bootstrapped on first run) |
@@ -216,7 +257,7 @@ koda/
 | `history` | REPL command history (rustyline) |
 | `todo.md` | Shared task list with project-scoped sections |
 
-### 8.2. Project-Level State
+### 12.2. Project-Level State
 | Path | Purpose |
 |------|---------|
 | `.koda.db` | SQLite database (sessions, messages, tool calls) |
@@ -225,7 +266,7 @@ koda/
 | `agents/` | Sub-agent configurations (JSON) |
 | `MEMORY.md` | Semantic memory (injected into system prompt) |
 
-### 8.3. Environment Variables
+### 12.3. Environment Variables
 | Variable | Description |
 |----------|-------------|
 | `KODA_BASE_URL` | Override LLM provider base URL |
@@ -235,16 +276,16 @@ koda/
 | `OPENAI_API_KEY` | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 
-### 8.4. Agent Config Resolution Order
+### 10.4. Agent Config Resolution Order
 1. **`<project_root>/agents/`** — repo-local agents
 2. **Next to the binary** — distribution bundles
 3. **`~/.config/koda/agents/`** — user-level (auto-created on first run)
 
 The default agent JSON is embedded into the binary at compile time via `include_str!`.
 
-## 9. Terminal Input & Display Architecture
+## 11. Terminal Input & Display Architecture
 
-### 9.1. Startup Banner
+### 11.1. Startup Banner
 Two-column layout with title embedded in the top border:
 ```
 ╭── 🐻 Koda v0.1.0 ───────────────────────────────────────────────╮
@@ -258,7 +299,7 @@ Two-column layout with title embedded in the top border:
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-### 9.2. Tool Display (dot + label + detail)
+### 11.2. Tool Display (dot + label + detail)
 Each tool call is shown with a colored dot, short label, and key arguments:
 ```
   ● Read src/main.rs                     ← steel blue
@@ -273,7 +314,7 @@ Each tool call is shown with a colored dot, short label, and key arguments:
   ● Agent frontend                       ← ruby
 ```
 
-### 9.3. Streaming Markdown Renderer
+### 11.3. Streaming Markdown Renderer
 Tokens are rendered with full markdown formatting as they stream:
 
 | Element | Rendering |
@@ -290,7 +331,7 @@ Tokens are rendered with full markdown formatting as they stream:
 | Tables (`\|..\|`) | Aligned columns with dim borders |
 | `---` | Dim horizontal rule |
 
-## 10. Agent Architecture
+## 12. Agent Architecture
 
 ### 10.1. Built-in Agents (Compile-time Embedded)
 Five agents are embedded via `include_str!` — zero disk dependency:
@@ -310,20 +351,20 @@ When the LLM returns multiple tool calls and none require user confirmation,
 they execute concurrently via `futures::join_all`. This enables parallel
 sub-agent invocation (e.g., reviewer + security + testgen simultaneously).
 
-## 11. Multi-Modal Support
+## 13. Multi-Modal Support
 Images can be attached via `@image.png` references or drag-and-drop (bare path
 auto-detection). Images are base64-encoded in-flight (not persisted to DB) and
 sent using provider-specific formats:
 - **OpenAI**: multi-part content array with `image_url` data URIs
 - **Anthropic**: content blocks with `image` type and base64 source
 
-## 12. Context Window Management
+## 14. Context Window Management
 - **Auto-compact**: at 80% usage, the conversation is summarized via LLM
 - **Manual**: `/compact` command
 - **Sliding window**: old messages dropped as safety net
 - **Prompt caching**: Anthropic system prompt + tools cached (90% cheaper)
 
-## 13. Test Coverage
+## 15. Test Coverage
 
 288 tests across 6 suites:
 

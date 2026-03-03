@@ -106,9 +106,9 @@ User-level servers go in `~/.config/koda/mcp.json` (merged, project overrides).
 
 ## Documentation
 
-- **[DESIGN.md](DESIGN.md)** — Architecture, technical stack, component breakdown
-- **[FUTURE.md](FUTURE.md)** — Roadmap and competitive analysis
-- **[CHANGELOG.md](CHANGELOG.md)** — Release history and detailed feature list
+- **[DESIGN.md](DESIGN.md)** — Architecture, design principles, technical stack
+- **[CHANGELOG.md](CHANGELOG.md)** — Release history
+- **[GitHub Issues](https://github.com/lijunzh/koda/issues)** — Roadmap and feature backlog
 
 ## Development
 
@@ -117,8 +117,6 @@ cargo test          # Run all tests
 cargo clippy        # Lint
 cargo run           # Run locally
 ```
-
-See [FUTURE.md](FUTURE.md) for the full roadmap.
 
 ## License
 
