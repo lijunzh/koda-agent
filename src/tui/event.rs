@@ -89,6 +89,30 @@ pub fn channel() -> (UiSender, UiReceiver) {
     tokio::sync::mpsc::unbounded_channel()
 }
 
+/// Global UI sender for use by the inference engine and display module.
+/// When set, output flows through the TUI instead of stdout.
+static GLOBAL_UI_TX: std::sync::OnceLock<UiSender> = std::sync::OnceLock::new();
+
+/// Install the global UI sender (call once when TUI mode starts).
+pub fn set_global_sender(tx: UiSender) {
+    let _ = GLOBAL_UI_TX.set(tx);
+}
+
+/// Try to send a UI event through the global sender.
+/// Returns false if no global sender is installed (classic REPL mode).
+pub fn try_send(event: UiEvent) -> bool {
+    if let Some(tx) = GLOBAL_UI_TX.get() {
+        tx.send(event).is_ok()
+    } else {
+        false
+    }
+}
+
+/// Check if TUI mode is active.
+pub fn is_tui_mode() -> bool {
+    GLOBAL_UI_TX.get().is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

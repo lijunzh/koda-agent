@@ -37,6 +37,9 @@ pub async fn run_engine(
     mode: ApprovalMode,
     mut settings: Settings,
 ) {
+    // Install the global UI sender so display.rs and inference.rs can route through TUI
+    crate::tui::event::set_global_sender(ui_tx.clone());
+
     let tool_defs = tools.get_definitions(&config.allowed_tools);
 
     // Send initial status

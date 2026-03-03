@@ -44,6 +44,12 @@ const EMERALD: &str = "\x1b[38;2;42;160;60m"; // response (your answer!)
 
 /// Print a tool call with a colored dot and label (flush left).
 pub fn print_tool_call(tc: &ToolCall, is_sub_agent: bool) {
+    // In TUI mode, route through the event bus
+    if crate::tui::event::is_tui_mode() {
+        crate::tui::event::try_send(crate::tui::event::UiEvent::ToolCall(tc.clone()));
+        return;
+    }
+
     let indent = if is_sub_agent { "  " } else { "" };
     let (color, label, detail) = tool_info(&tc.function_name, &tc.arguments);
 
@@ -233,6 +239,10 @@ pub fn print_sub_agent_start(agent_name: &str) {
 
 /// Print the THINKING indicator (for `<think>` blocks from reasoning models).
 pub fn print_thinking_banner() {
+    if crate::tui::event::is_tui_mode() {
+        crate::tui::event::try_send(crate::tui::event::UiEvent::ThinkingStart);
+        return;
+    }
     println!("\n{VIOLET}\u{1f36f}{RESET} {BOLD}Thinking{RESET} {DIM}⚡{RESET}");
 }
 
@@ -240,6 +250,10 @@ const THINKING_PREVIEW_LINES: usize = 20;
 
 /// Render a structured thinking block with violet `│` gutter and bold `#` headers.
 pub fn render_thinking_block(text: &str) {
+    if crate::tui::event::is_tui_mode() {
+        crate::tui::event::try_send(crate::tui::event::UiEvent::ThinkingDelta(text.to_string()));
+        return;
+    }
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len();
     let show = total.min(THINKING_PREVIEW_LINES);
@@ -260,6 +274,10 @@ pub fn render_thinking_block(text: &str) {
 
 /// Print the AGENT RESPONSE indicator.
 pub fn print_response_banner() {
+    if crate::tui::event::is_tui_mode() {
+        crate::tui::event::try_send(crate::tui::event::UiEvent::ResponseStart);
+        return;
+    }
     println!("\n{EMERALD}●{RESET} {BOLD}Response{RESET}");
 }
 
@@ -269,6 +287,16 @@ const CONTENT_INDENT: &str = "  ";
 /// Print tool output with a colored left border (indented under banner).
 pub fn print_tool_output(tool_name: &str, output: &str) {
     if output.is_empty() || tool_name == "ShareReasoning" {
+        return;
+    }
+
+    // In TUI mode, send the output through the event bus
+    if crate::tui::event::is_tui_mode() {
+        crate::tui::event::try_send(crate::tui::event::UiEvent::ToolOutput {
+            tool_name: tool_name.to_string(),
+            output: output.to_string(),
+            is_sub_agent: false,
+        });
         return;
     }
 

@@ -132,6 +132,12 @@ impl MarkdownStreamer {
     /// Feed a text delta (token) into the streamer.
     /// Complete lines are rendered immediately.
     pub fn push(&mut self, delta: &str) {
+        // In TUI mode, send raw text through the event bus
+        if crate::tui::event::is_tui_mode() {
+            crate::tui::event::try_send(crate::tui::event::UiEvent::TextDelta(delta.to_string()));
+            return;
+        }
+
         self.buffer.push_str(delta);
 
         // Render all complete lines
@@ -144,6 +150,10 @@ impl MarkdownStreamer {
 
     /// Flush any remaining buffered text (call when stream ends).
     pub fn flush(&mut self) {
+        if crate::tui::event::is_tui_mode() {
+            crate::tui::event::try_send(crate::tui::event::UiEvent::TextDone);
+            return;
+        }
         if !self.buffer.is_empty() {
             let line = std::mem::take(&mut self.buffer);
             self.render_line(&line);
