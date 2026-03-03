@@ -9,6 +9,14 @@ Refer to this when the user asks "what can you do?" or about features.
 /memory — persistent memory | /model — switch model | /provider — switch provider
 /sessions — manage sessions | /trust — plan/normal/yolo | /exit — quit
 
+### TUI Mode
+
+Run `koda --tui` for the experimental ratatui-based terminal UI with:
+- Scrollable output area (PageUp/PageDown)
+- Persistent status footer (model, context %, mode)
+- Type-ahead prompting (type while Koda thinks)
+- Input history (Up/Down arrows)
+
 ### Input
 
 - `@file.rs` attaches file context, `@image.png` for multi-modal analysis
