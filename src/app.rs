@@ -32,6 +32,7 @@ pub async fn run(
     db: Database,
     session_id: String,
     version_check: tokio::task::JoinHandle<Option<String>>,
+    use_tui: bool,
 ) -> Result<()> {
     let provider: Arc<RwLock<Box<dyn LlmProvider>>> =
         Arc::new(RwLock::new(create_provider(&config)));
@@ -92,6 +93,43 @@ pub async fn run(
     // Initialize approval mode and user settings
     let shared_mode = approval::new_shared_mode(ApprovalMode::Normal);
     let mut settings = Settings::load();
+
+    // === TUI MODE ===
+    if use_tui {
+        let mode = approval::read_mode(&shared_mode);
+        let tui_state =
+            std::sync::Arc::new(std::sync::Mutex::new(crate::tui::state::TuiState::new()));
+        let (ui_tx, ui_rx) = crate::tui::event::channel();
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Spawn the engine task
+        let engine_state = tui_state.clone();
+        let engine_handle = tokio::spawn(crate::tui::engine::run_engine(
+            project_root.clone(),
+            config.clone(),
+            db,
+            session_id,
+            provider,
+            tools,
+            system_prompt,
+            ui_tx,
+            cmd_rx,
+            engine_state,
+            mode,
+            settings,
+        ));
+
+        // Run the TUI renderer (blocks until quit)
+        if let Err(e) = crate::tui::renderer::run_tui(tui_state, ui_rx, cmd_tx).await {
+            eprintln!("TUI error: {e}");
+        }
+
+        // Wait for the engine to finish
+        let _ = engine_handle.await;
+        return Ok(());
+    }
+
+    // === CLASSIC REPL MODE ===
 
     let mut helper = KodaHelper::new(project_root.clone(), shared_mode.clone());
     {

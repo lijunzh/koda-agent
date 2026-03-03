@@ -88,6 +88,10 @@ struct Cli {
     /// OpenAI reasoning effort (low, medium, high)
     #[arg(long)]
     reasoning_effort: Option<String>,
+
+    /// Use the experimental ratatui TUI instead of the classic REPL.
+    #[arg(long, default_value_t = false)]
+    tui: bool,
 }
 
 #[tokio::main]
@@ -188,7 +192,7 @@ async fn main() -> Result<()> {
     };
 
     // Run the main event loop (pass version check handle for post-banner hint)
-    app::run(project_root, config, db, session_id, version_check).await
+    app::run(project_root, config, db, session_id, version_check, cli.tui).await
 }
 
 /// Resolve the headless prompt from -p flag, positional arg, or stdin pipe.
