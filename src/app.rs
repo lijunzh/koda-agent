@@ -229,6 +229,8 @@ pub async fn run(
                         ("/model", "Pick a model interactively"),
                         ("/provider", "Switch LLM provider"),
                         ("/sessions", "List/resume/delete sessions"),
+                        ("/trust", "Set approval mode (always / auto / never)"),
+                        ("/exit", "Quit the session"),
                     ];
                     let options: Vec<SelectOption> = commands
                         .iter()
