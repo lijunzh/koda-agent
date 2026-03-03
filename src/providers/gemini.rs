@@ -112,6 +112,9 @@ struct ResponsePart {
     /// Thought signature that must be echoed back when replaying this part.
     #[serde(default)]
     thought_signature: Option<String>,
+    /// When true, this part contains thinking/reasoning content (not user-visible output).
+    #[serde(default)]
+    thought: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -129,6 +132,9 @@ struct UsageMetadata {
     candidates_token_count: i64,
     #[serde(default)]
     cached_content_token_count: i64,
+    /// Tokens used for thinking/reasoning.
+    #[serde(default)]
+    thoughts_token_count: i64,
 }
 
 impl UsageMetadata {
@@ -317,6 +323,7 @@ impl LlmProvider for GeminiProvider {
                         final_usage.prompt_tokens = usage.prompt_token_count;
                         final_usage.completion_tokens = usage.candidates_token_count;
                         final_usage.cache_read_tokens = usage.cached_content_token_count;
+                        final_usage.thinking_tokens = usage.thoughts_token_count;
                         usage.log_cache_stats();
                     }
 
@@ -330,7 +337,15 @@ impl LlmProvider for GeminiProvider {
                                     if let Some(text) = &part.text
                                         && !text.is_empty()
                                     {
-                                        let _ = tx.send(StreamChunk::TextDelta(text.clone())).await;
+                                        // Thinking parts go to ThinkingDelta, regular text to TextDelta
+                                        if part.thought == Some(true) {
+                                            let _ = tx
+                                                .send(StreamChunk::ThinkingDelta(text.clone()))
+                                                .await;
+                                        } else {
+                                            let _ =
+                                                tx.send(StreamChunk::TextDelta(text.clone())).await;
+                                        }
                                     }
                                     if let Some(fc) = &part.function_call {
                                         tc_counter += 1;
@@ -490,6 +505,12 @@ impl GeminiProvider {
         if let Some(temp) = settings.and_then(|s| s.temperature) {
             gen_config["temperature"] = serde_json::json!(temp);
         }
+        // Enable Gemini thinking/reasoning when thinking_budget is set
+        if let Some(budget) = settings.and_then(|s| s.thinking_budget) {
+            gen_config["thinkingConfig"] = serde_json::json!({
+                "thinkingBudget": budget
+            });
+        }
         let mut body = serde_json::json!({
             "contents": contents,
             "generationConfig": gen_config,
@@ -516,7 +537,10 @@ impl GeminiProvider {
                 {
                     for part in parts {
                         if let Some(text) = part.text {
-                            content_text.push_str(&text);
+                            // Skip thinking parts in non-streaming mode (they're internal reasoning)
+                            if part.thought != Some(true) {
+                                content_text.push_str(&text);
+                            }
                         }
                         if let Some(fc) = part.function_call {
                             tc_counter += 1;
@@ -536,6 +560,7 @@ impl GeminiProvider {
             prompt_token_count: 0,
             candidates_token_count: 0,
             cached_content_token_count: 0,
+            thoughts_token_count: 0,
         });
         usage.log_cache_stats();
 
@@ -550,6 +575,7 @@ impl GeminiProvider {
                 prompt_tokens: usage.prompt_token_count,
                 completion_tokens: usage.candidates_token_count,
                 cache_read_tokens: usage.cached_content_token_count,
+                thinking_tokens: usage.thoughts_token_count,
                 ..Default::default()
             },
         })
@@ -688,6 +714,7 @@ mod tests {
                         text: Some("Hello!".into()),
                         function_call: None,
                         thought_signature: None,
+                        thought: None,
                     }]),
                 }),
             }]),
@@ -695,6 +722,7 @@ mod tests {
                 prompt_token_count: 10,
                 candidates_token_count: 5,
                 cached_content_token_count: 0,
+                thoughts_token_count: 0,
             }),
         };
         let result = p.parse_response(resp).unwrap();
@@ -717,6 +745,7 @@ mod tests {
                             args: serde_json::json!({"path": "main.rs"}),
                         }),
                         thought_signature: None,
+                        thought: None,
                     }]),
                 }),
             }]),
@@ -726,5 +755,72 @@ mod tests {
         assert!(result.content.is_none());
         assert_eq!(result.tool_calls.len(), 1);
         assert_eq!(result.tool_calls[0].function_name, "Read");
+    }
+
+    #[test]
+    fn test_parse_response_filters_thinking_parts() {
+        let p = make_provider();
+        let resp = GenerateResponse {
+            candidates: Some(vec![Candidate {
+                content: Some(CandidateContent {
+                    parts: Some(vec![
+                        ResponsePart {
+                            text: Some("Let me think about this...".into()),
+                            function_call: None,
+                            thought_signature: None,
+                            thought: Some(true), // This is thinking — should be excluded
+                        },
+                        ResponsePart {
+                            text: Some("Here's the answer.".into()),
+                            function_call: None,
+                            thought_signature: None,
+                            thought: None, // Regular output
+                        },
+                    ]),
+                }),
+            }]),
+            usage_metadata: Some(UsageMetadata {
+                prompt_token_count: 10,
+                candidates_token_count: 20,
+                cached_content_token_count: 0,
+                thoughts_token_count: 15,
+            }),
+        };
+        let result = p.parse_response(resp).unwrap();
+        // Thinking parts should be excluded from content
+        assert_eq!(result.content.as_deref(), Some("Here's the answer."));
+        // Thinking tokens should be tracked
+        assert_eq!(result.usage.thinking_tokens, 15);
+    }
+
+    #[test]
+    fn test_build_request_includes_thinking_config() {
+        let p = make_provider();
+        let settings = crate::config::ModelSettings {
+            model: "gemini-2.5-flash".into(),
+            max_tokens: Some(8192),
+            temperature: None,
+            thinking_budget: Some(10000),
+            reasoning_effort: None,
+            max_context_tokens: 32_000,
+        };
+        let body = p.build_request_body(&[], None, &[], Some(&settings));
+        let thinking_config = &body["generationConfig"]["thinkingConfig"];
+        assert_eq!(thinking_config["thinkingBudget"], 10000);
+    }
+
+    #[test]
+    fn test_build_request_no_thinking_config_when_unset() {
+        let p = make_provider();
+        let settings = crate::config::ModelSettings {
+            model: "gemini-2.0-flash".into(),
+            max_tokens: Some(8192),
+            temperature: None,
+            thinking_budget: None,
+            reasoning_effort: None,
+            max_context_tokens: 32_000,
+        };
+        let body = p.build_request_body(&[], None, &[], Some(&settings));
+        assert!(body["generationConfig"]["thinkingConfig"].is_null());
     }
 }
