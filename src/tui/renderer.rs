@@ -200,10 +200,8 @@ fn handle_key_event(
 fn apply_ui_event(state: &mut TuiState, event: UiEvent) {
     match event {
         UiEvent::TextDelta(text) => {
-            // Append text to the last line or create new lines
-            for line in text.lines() {
-                state.push_line(line, LineStyle::Normal);
-            }
+            // Streaming text: accumulate into the current line, break on \n
+            state.append_text(&text, LineStyle::Normal);
         }
         UiEvent::TextDone => {
             state.push_line("", LineStyle::Normal);

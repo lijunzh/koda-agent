@@ -113,6 +113,41 @@ impl TuiState {
         }
     }
 
+    /// Append streaming text to the scrollback buffer.
+    /// Accumulates into the last line until a newline is encountered.
+    pub fn append_text(&mut self, text: &str, style: LineStyle) {
+        let mut remaining = text;
+        while !remaining.is_empty() {
+            if let Some(nl_pos) = remaining.find('\n') {
+                let before = &remaining[..nl_pos];
+                // Append to the last line
+                if let Some(last) = self.lines.last_mut() {
+                    last.text.push_str(before);
+                } else {
+                    self.push_line(before, style);
+                }
+                // Start a new line
+                self.push_line("", style);
+                remaining = &remaining[nl_pos + 1..];
+            } else {
+                // No newline — append to the last line
+                if let Some(last) = self.lines.last_mut() {
+                    last.text.push_str(remaining);
+                } else {
+                    self.push_line(remaining, style);
+                }
+                break;
+            }
+        }
+
+        // Trim scrollback
+        if self.lines.len() > MAX_SCROLLBACK {
+            let drain = self.lines.len() - MAX_SCROLLBACK;
+            self.lines.drain(..drain);
+            self.scroll_offset = self.scroll_offset.saturating_sub(drain);
+        }
+    }
+
     /// Get visible lines for a given viewport height.
     pub fn visible_lines(&self, height: usize) -> &[OutputLine] {
         let total = self.lines.len();
@@ -241,5 +276,39 @@ mod tests {
             state.push_line(format!("line {i}"), LineStyle::Normal);
         }
         assert!(state.lines.len() <= 10_000);
+    }
+
+    #[test]
+    fn test_append_text_streaming() {
+        let mut state = TuiState::new();
+        // Simulate streaming tokens arriving one at a time
+        state.append_text("Hello ", LineStyle::Normal);
+        state.append_text("world! ", LineStyle::Normal);
+        state.append_text("This is ", LineStyle::Normal);
+        state.append_text("great.", LineStyle::Normal);
+        assert_eq!(state.lines.len(), 1);
+        assert_eq!(state.lines[0].text, "Hello world! This is great.");
+    }
+
+    #[test]
+    fn test_append_text_with_newlines() {
+        let mut state = TuiState::new();
+        state.append_text("line one\nline two\n", LineStyle::Normal);
+        state.append_text("line three", LineStyle::Normal);
+        assert_eq!(state.lines.len(), 3);
+        assert_eq!(state.lines[0].text, "line one");
+        assert_eq!(state.lines[1].text, "line two");
+        assert_eq!(state.lines[2].text, "line three");
+    }
+
+    #[test]
+    fn test_append_text_mid_word_newline() {
+        let mut state = TuiState::new();
+        state.append_text("Hello ", LineStyle::Normal);
+        state.append_text("wor", LineStyle::Normal);
+        state.append_text("ld\nNext", LineStyle::Normal);
+        assert_eq!(state.lines.len(), 2);
+        assert_eq!(state.lines[0].text, "Hello world");
+        assert_eq!(state.lines[1].text, "Next");
     }
 }
