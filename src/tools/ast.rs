@@ -1,7 +1,10 @@
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+use petgraph::graph::{DiGraph, NodeIndex};
 
 use super::safe_resolve_path;
 use crate::providers::ToolDefinition;
@@ -35,7 +38,6 @@ pub fn definitions() -> Vec<ToolDefinition> {
 pub async fn ast_analysis(project_root: &Path, args: &Value) -> Result<String> {
     let action = args["action"].as_str().unwrap_or("").to_string();
     let file_path = args["file_path"].as_str().unwrap_or("");
-    let _symbol = args["symbol"].as_str().map(|s| s.to_string());
 
     if action.is_empty() || file_path.is_empty() {
         return Ok("Error: action and file_path are required.".to_string());
@@ -81,15 +83,14 @@ pub async fn ast_analysis(project_root: &Path, args: &Value) -> Result<String> {
         None => return Ok("Error: Failed to parse file into AST".to_string()),
     };
 
-    // For now, we will just implement a simple structure dump for 'analyze_file'
-    // by manually traversing the tree, before writing full Tree-sitter Queries.
-
     if action == "analyze_file" {
         return analyze_file_structure(&tree, source_code.as_bytes(), extension);
     } else if action == "get_call_graph" {
-        return Ok(
-            "The 'get_call_graph' action is still under development in Phase 1.".to_string(),
-        );
+        let symbol = args["symbol"].as_str().unwrap_or("");
+        if symbol.is_empty() {
+            return Ok("Error: 'symbol' is required for get_call_graph".to_string());
+        }
+        return get_call_graph(&tree, source_code.as_bytes(), extension, symbol);
     }
 
     Ok(format!("Error: Unknown action '{}'", action))
@@ -115,7 +116,6 @@ fn analyze_file_structure(
     let mut found_functions = Vec::new();
     let mut found_classes = Vec::new();
 
-    // A very simple recursive traversal
     fn traverse(
         cursor: &mut tree_sitter::TreeCursor,
         source: &[u8],
@@ -191,4 +191,148 @@ fn analyze_file_structure(
     }
 
     Ok(output)
+}
+
+fn get_call_graph(
+    tree: &tree_sitter::Tree,
+    source: &[u8],
+    extension: &str,
+    target_symbol: &str,
+) -> Result<String> {
+    let mut graph = DiGraph::<String, ()>::new();
+    let mut node_indices: HashMap<String, NodeIndex> = HashMap::new();
+
+    fn walk(
+        cursor: &mut tree_sitter::TreeCursor,
+        source: &[u8],
+        extension: &str,
+        current_caller: Option<String>,
+        graph: &mut DiGraph<String, ()>,
+        node_indices: &mut HashMap<String, NodeIndex>,
+    ) {
+        let node = cursor.node();
+        let kind = node.kind();
+        let mut next_caller = current_caller.clone();
+
+        // Detect function definition to set the caller context
+        if ((extension == "rs" && kind == "function_item")
+            || (extension == "py" && kind == "function_definition"))
+            && let Some(name_node) = node.child_by_field_name("name")
+            && let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()])
+        {
+            let name_str = name.to_string();
+            next_caller = Some(name_str.clone());
+            node_indices
+                .entry(name_str.clone())
+                .or_insert_with(|| graph.add_node(name_str));
+        }
+
+        // Detect function calls inside the current function context
+        if let Some(caller) = &current_caller
+            && ((extension == "rs" && kind == "call_expression")
+                || (extension == "py" && kind == "call"))
+            && let Some(func_node) = node.child_by_field_name("function")
+            && let Ok(call_text) = std::str::from_utf8(&source[func_node.byte_range()])
+        {
+            // Heuristic: strip module paths (::) and object methods (.) to get the base function name
+            let called_name = call_text
+                .rsplit("::")
+                .next()
+                .unwrap_or(call_text)
+                .rsplit('.')
+                .next()
+                .unwrap_or(call_text)
+                .trim();
+
+            let caller_str = caller.clone();
+            let called_str = called_name.to_string();
+
+            let caller_idx = *node_indices
+                .entry(caller_str.clone())
+                .or_insert_with(|| graph.add_node(caller_str));
+            let callee_idx = *node_indices
+                .entry(called_str.clone())
+                .or_insert_with(|| graph.add_node(called_str));
+
+            graph.add_edge(caller_idx, callee_idx, ());
+        }
+
+        if cursor.goto_first_child() {
+            walk(
+                cursor,
+                source,
+                extension,
+                next_caller.clone(),
+                graph,
+                node_indices,
+            );
+            while cursor.goto_next_sibling() {
+                walk(
+                    cursor,
+                    source,
+                    extension,
+                    next_caller.clone(),
+                    graph,
+                    node_indices,
+                );
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    let mut cursor = tree.root_node().walk();
+    walk(
+        &mut cursor,
+        source,
+        extension,
+        None,
+        &mut graph,
+        &mut node_indices,
+    );
+
+    let symbol_idx = graph.node_indices().find(|i| graph[*i] == target_symbol);
+
+    if let Some(idx) = symbol_idx {
+        let mut callers: Vec<_> = graph
+            .neighbors_directed(idx, petgraph::Direction::Incoming)
+            .map(|i| graph[i].clone())
+            .collect();
+        let mut callees: Vec<_> = graph
+            .neighbors_directed(idx, petgraph::Direction::Outgoing)
+            .map(|i| graph[i].clone())
+            .collect();
+
+        // Sort and dedup to clean up multiple calls to the same function
+        callers.sort();
+        callers.dedup();
+        callees.sort();
+        callees.dedup();
+
+        let mut output = format!("### Call Graph for `{}`\n\n", target_symbol);
+
+        output.push_str("**Called by (Callers):**\n");
+        if callers.is_empty() {
+            output.push_str("- *No callers found in this file*\n");
+        } else {
+            for c in callers {
+                output.push_str(&format!("- `{}`\n", c));
+            }
+        }
+
+        output.push_str("\n**Calls (Callees):**\n");
+        if callees.is_empty() {
+            output.push_str("- *No outgoing calls found*\n");
+        } else {
+            for c in callees {
+                output.push_str(&format!("- `{}`\n", c));
+            }
+        }
+
+        Ok(output)
+    } else {
+        Ok(format!(
+            "Symbol `{}` not found in the file's call graph. (It might not be defined or called here).",
+            target_symbol
+        ))
+    }
 }
