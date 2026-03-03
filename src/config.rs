@@ -269,9 +269,16 @@ impl KodaConfig {
             .clone()
             .unwrap_or_else(|| "http://localhost:1234/v1".to_string());
         let provider_type = ProviderType::from_url_or_name(&default_url, agent.provider.as_deref());
-        let base_url = agent
-            .base_url
-            .unwrap_or_else(|| provider_type.default_base_url().to_string());
+
+        // If it's a local provider and we have a user-defined default in env, use it
+        let mut base_url = agent.base_url;
+        if base_url.is_none() && !provider_type.requires_api_key() {
+            if let Some(env_url) = crate::runtime_env::get("KODA_LOCAL_URL") {
+                base_url = Some(env_url);
+            }
+        }
+
+        let base_url = base_url.unwrap_or_else(|| provider_type.default_base_url().to_string());
         let model = agent
             .model
             .unwrap_or_else(|| provider_type.default_model().to_string());
