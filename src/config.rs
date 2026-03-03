@@ -14,9 +14,22 @@ pub enum ProviderType {
     Gemini,
     Groq,
     Grok,
+    Ollama,
+    DeepSeek,
+    Mistral,
+    MiniMax,
+    OpenRouter,
+    Together,
+    Fireworks,
+    Vllm,
 }
 
 impl ProviderType {
+    /// Returns true if this provider requires an API key to function.
+    pub fn requires_api_key(&self) -> bool {
+        !matches!(self, Self::LMStudio | Self::Ollama | Self::Vllm)
+    }
+
     /// Detect provider type from a base URL or explicit name.
     pub fn from_url_or_name(url: &str, name: Option<&str>) -> Self {
         if let Some(n) = name {
@@ -26,12 +39,25 @@ impl ProviderType {
                 "groq" => Self::Groq,
                 "grok" | "xai" => Self::Grok,
                 "lmstudio" | "lm-studio" => Self::LMStudio,
+                "ollama" => Self::Ollama,
+                "deepseek" => Self::DeepSeek,
+                "mistral" => Self::Mistral,
+                "minimax" => Self::MiniMax,
+                "openrouter" => Self::OpenRouter,
+                "together" => Self::Together,
+                "fireworks" => Self::Fireworks,
+                "vllm" => Self::Vllm,
                 _ => Self::OpenAI,
             };
         }
         // Auto-detect from URL
+        let url = url.to_lowercase();
         if url.contains("anthropic.com") {
             Self::Anthropic
+        } else if url.contains("localhost:11434") || url.contains("127.0.0.1:11434") {
+            Self::Ollama
+        } else if url.contains("localhost:8000") || url.contains("127.0.0.1:8000") {
+            Self::Vllm
         } else if url.contains("localhost") || url.contains("127.0.0.1") {
             Self::LMStudio
         } else if url.contains("generativelanguage.googleapis.com") {
@@ -40,6 +66,18 @@ impl ProviderType {
             Self::Groq
         } else if url.contains("x.ai") {
             Self::Grok
+        } else if url.contains("deepseek.com") {
+            Self::DeepSeek
+        } else if url.contains("mistral.ai") {
+            Self::Mistral
+        } else if url.contains("minimax.chat") || url.contains("minimaxi.com") {
+            Self::MiniMax
+        } else if url.contains("openrouter.ai") {
+            Self::OpenRouter
+        } else if url.contains("together.xyz") {
+            Self::Together
+        } else if url.contains("fireworks.ai") {
+            Self::Fireworks
         } else {
             Self::OpenAI
         }
@@ -53,6 +91,14 @@ impl ProviderType {
             Self::Gemini => "https://generativelanguage.googleapis.com",
             Self::Groq => "https://api.groq.com/openai/v1",
             Self::Grok => "https://api.x.ai/v1",
+            Self::Ollama => "http://localhost:11434/v1",
+            Self::DeepSeek => "https://api.deepseek.com/v1",
+            Self::Mistral => "https://api.mistral.ai/v1",
+            Self::MiniMax => "https://api.minimax.chat/v1",
+            Self::OpenRouter => "https://openrouter.ai/api/v1",
+            Self::Together => "https://api.together.xyz/v1",
+            Self::Fireworks => "https://api.fireworks.ai/inference/v1",
+            Self::Vllm => "http://localhost:8000/v1",
         }
     }
 
@@ -64,6 +110,14 @@ impl ProviderType {
             Self::Gemini => "gemini-2.0-flash",
             Self::Groq => "llama-3.3-70b-versatile",
             Self::Grok => "grok-3",
+            Self::Ollama => "auto-detect",
+            Self::DeepSeek => "deepseek-chat",
+            Self::Mistral => "mistral-large-latest",
+            Self::MiniMax => "minimax-text-01",
+            Self::OpenRouter => "anthropic/claude-3.5-sonnet",
+            Self::Together => "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            Self::Fireworks => "accounts/fireworks/models/llama-v3p3-70b-instruct",
+            Self::Vllm => "auto-detect",
         }
     }
 
@@ -75,6 +129,14 @@ impl ProviderType {
             Self::Gemini => "GEMINI_API_KEY",
             Self::Groq => "GROQ_API_KEY",
             Self::Grok => "XAI_API_KEY",
+            Self::Ollama => "KODA_API_KEY",
+            Self::DeepSeek => "DEEPSEEK_API_KEY",
+            Self::Mistral => "MISTRAL_API_KEY",
+            Self::MiniMax => "MINIMAX_API_KEY",
+            Self::OpenRouter => "OPENROUTER_API_KEY",
+            Self::Together => "TOGETHER_API_KEY",
+            Self::Fireworks => "FIREWORKS_API_KEY",
+            Self::Vllm => "KODA_API_KEY",
         }
     }
 }
@@ -88,6 +150,14 @@ impl std::fmt::Display for ProviderType {
             Self::Gemini => write!(f, "gemini"),
             Self::Groq => write!(f, "groq"),
             Self::Grok => write!(f, "grok"),
+            Self::Ollama => write!(f, "ollama"),
+            Self::DeepSeek => write!(f, "deepseek"),
+            Self::Mistral => write!(f, "mistral"),
+            Self::MiniMax => write!(f, "minimax"),
+            Self::OpenRouter => write!(f, "openrouter"),
+            Self::Together => write!(f, "together"),
+            Self::Fireworks => write!(f, "fireworks"),
+            Self::Vllm => write!(f, "vllm"),
         }
     }
 }
