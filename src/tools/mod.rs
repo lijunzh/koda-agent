@@ -4,6 +4,7 @@
 //! Path validation is enforced here to prevent directory traversal.
 
 pub mod agent;
+pub mod ast;
 pub mod file_tools;
 pub mod glob_tool;
 pub mod grep;
@@ -44,6 +45,9 @@ impl ToolRegistry {
 
         // Register all built-in tools
         for def in file_tools::definitions() {
+            definitions.insert(def.name.clone(), def);
+        }
+        for def in ast::definitions() {
             definitions.insert(def.name.clone(), def);
         }
         for def in grep::definitions() {
@@ -154,6 +158,7 @@ impl ToolRegistry {
             // Search tools
             "Grep" => grep::grep(&self.project_root, &args).await,
             "Glob" => glob_tool::glob_search(&self.project_root, &args).await,
+            "AstAnalysis" => ast::ast_analysis(&self.project_root, &args).await,
 
             // Shell
             "Bash" => shell::run_shell_command(&self.project_root, &args).await,
