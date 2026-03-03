@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-description: Something isn't working right
+about: Something isn't working right
 labels: ["bug"]
 ---
 
