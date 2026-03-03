@@ -29,13 +29,14 @@ echo "explain this" | koda        # Piped input
 ## What's Inside
 
 - **15 built-in tools** — file ops, search, shell, web fetch, memory, agents
+- **MCP support** — connect to any [MCP server](https://modelcontextprotocol.io) via `.mcp.json` (same format as Claude Code / Cursor)
 - **6 LLM providers** — LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
 - **5 embedded agents** — default, code reviewer, security auditor, test writer, release engineer
 - **Approval modes** — plan (read-only) / normal (smart confirm) / yolo (auto-approve) via `/trust`
 - **Diff preview** — see exactly what changes before approving Edit, Write, Delete
 - **Loop detection** — catches repeated tool calls with configurable iteration caps
 - **Parallel execution** — concurrent tool calls and sub-agent orchestration
-- **Smart context** — auto-compact at 80%, sliding window, prompt caching (Anthropic)
+- **Smart context** — auto-compact (configurable threshold), sliding window, prompt caching (Anthropic)
 - **Extended thinking** — structured thinking block display with configurable budgets
 - **Image analysis** — `@image.png` or drag-and-drop for multi-modal input
 - **Git integration** — `/diff` review, commit message generation
@@ -51,6 +52,7 @@ echo "explain this" | koda        # Piped input
 | `/compact` | Summarize conversation to reclaim context |
 | `/cost` | Show token usage for this session |
 | `/diff` | Show/review uncommitted changes |
+| `/mcp` | MCP servers: status, add, remove, restart |
 | `/memory` | View/save project & global memory |
 | `/model` | Pick a model (↑↓ arrow keys) |
 | `/provider` | Switch LLM provider |
@@ -59,6 +61,32 @@ echo "explain this" | koda        # Piped input
 | `/exit` | Quit Koda |
 
 **Tips:** `@file` to attach context · `Shift+Tab` to cycle trust mode · `Esc` to clear input
+
+## MCP (Model Context Protocol)
+
+Koda connects to external [MCP servers](https://modelcontextprotocol.io) for additional tools.
+Create a `.mcp.json` in your project root (same format as Claude Code / Cursor):
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "$GITHUB_TOKEN" }
+    }
+  }
+}
+```
+
+Servers auto-connect on startup. MCP tools appear alongside built-in tools with
+namespaced names (e.g. `github.create_issue`). Manage at runtime with `/mcp`.
+
+User-level servers go in `~/.config/koda/mcp.json` (merged, project overrides).
 
 ## Documentation
 
@@ -74,7 +102,6 @@ cargo clippy        # Lint
 cargo run           # Run locally
 ```
 
-**v0.1.x** delivers a rock-solid agent with extensibility coming next (MCP protocol).
 See [FUTURE.md](FUTURE.md) for the full roadmap.
 
 ## License
