@@ -4,6 +4,28 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.3] - 2026-03-03
+
+This release introduces major leaps in model interoperability, significantly reduces token overhead, and lays the groundwork for external tool integration via the Model Context Protocol. It focuses on giving developers more flexibility with local providers and maintaining high performance over long sessions.
+
+✨ **Highlights:** MCP Support · OpenAI-Compatible Providers · Gemini Reasoning · 61% System Prompt Optimization
+
+### Added
+- **Model Context Protocol (MCP)**: Full support for external tools via MCP, configurable via `.mcp.json` and interactive `/mcp` commands.
+- **OpenAI-Compatible Providers**: Connect to Ollama, DeepSeek, Mistral, and other local models seamlessly.
+- **Custom Local URLs**: Route local LLM requests to custom proxy URLs via interactive setup or the `KODA_LOCAL_URL` environment variable.
+- **Gemini Thinking Support**: Added support for Gemini's native reasoning capabilities, including rendering the `thought_signature` in tool histories.
+- **Session Tasks**: Introduced the `TodoWrite` tool for session-scoped task tracking.
+
+### Changed
+- **Performance**: Optimized the core system prompt, achieving a 61% token reduction (1,638 → 632 tokens) for massive cost savings on long sessions.
+- **Database Architecture**: Centralized the SQLite database to `~/.config/koda/koda.db` for cleaner workspace management.
+- **Documentation**: Consolidated various markdown files into `DESIGN.md` and migrated feature requests directly to GitHub issues.
+
+### Fixed
+- **Memory Consistency**: Ensure the `/memory save` command respects the active context file (e.g., `CLAUDE.md`).
+- **Formatting & Linting**: Resolved multiple CI failures, dead code, and collapsible `if` statement warnings in `config.rs`.
+
 ## [0.1.2] - 2026-03-02
 
 ✨ **Highlights:** approval modes (plan/normal/yolo) · diff preview before confirmation · loop detection · native Gemini provider · extended thinking display
