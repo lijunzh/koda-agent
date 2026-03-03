@@ -145,6 +145,43 @@ once MCP and permissions are solid.
 
 ---
 
+## Security Audit Findings — 2025-04-01 ✅
+
+**Status:** Documented.
+
+### RUSTSEC-2023-0071 (Medium severity 5.9)
+
+- **Crate:** `rsa` v0.9.10 (transitive dependency)
+- **Issue:** Marvin Attack — potential key recovery through timing sidechannels
+- **Affected dependency chain:** sqlx → sqlx-macros → sqlx-macros-core → sqlx-mysql
+- **Solution:** No fixed upgrade available yet
+
+**Impact Assessment:**
+- Koda primarily uses SQLite (WAL mode) for local storage
+- MySQL support is available via `--base-url` but not the primary use case
+- The attack requires cryptographic timing sidechannels, which is unlikely in this CLI agent's threat model
+- This is a low-priority finding for the current architecture
+
+**Decision:** Monitor for upstream fix. No immediate action required.
+
+### Additional Warnings (Low Priority)
+
+**RUSTSEC-2025-0141: `bincode` is unmaintained**
+
+- **Crate:** bincode v1.3.3
+- **Dependency chain:** syntect (markdown highlighting)
+- **Assessment:** Stable crate, no security vulnerabilities. Replacement `bincode2` exists but not required.
+
+**RUSTSEC-2025-0119: `number_prefix` is unmaintained**
+
+- **Crate:** number_prefix v0.4.0
+- **Dependency chain:** indicatif (progress bars)
+- **Assessment:** Stable crate with no known issues. Used for human-readable size formatting.
+
+**Overall Assessment:** All warnings are low-priority. Koda's zero-dependency binary architecture remains intact.
+
+---
+
 ## Competitive Summary
 
 ### Core Agent Capabilities
