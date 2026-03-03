@@ -936,7 +936,28 @@ async fn handle_setup_provider(
                 }
             }
             Err(_) => {
-                println!("  \x1b[31mCancelled, provider not changed.\x1b[0m");
+                println!("  \x1b[31mProvider switch cancelled.\x1b[0m");
+                return;
+            }
+        }
+    } else if !ptype.requires_api_key() {
+        let default_url = ptype.default_base_url();
+        let prompt_msg = format!("  Enter {} URL (enter for {}): ", ptype, default_url);
+        match rl.readline(&prompt_msg) {
+            Ok(url) => {
+                let url = url.trim();
+                if !url.is_empty() {
+                    config.base_url = url.to_string();
+                } else {
+                    config.base_url = default_url.to_string();
+                }
+                println!(
+                    "  \x1b[32m\u{2713}\x1b[0m URL set to \x1b[36m{}\x1b[0m",
+                    config.base_url
+                );
+            }
+            Err(_) => {
+                println!("  \x1b[31mProvider switch cancelled.\x1b[0m");
                 return;
             }
         }

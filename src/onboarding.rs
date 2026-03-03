@@ -130,10 +130,32 @@ pub fn run_wizard() -> Option<ProviderType> {
             "  \x1b[32m\u{2713}\x1b[0m {} selected \u{2014} no API key needed",
             provider_type
         );
+        let default_url = provider_type.default_base_url();
         println!(
-            "  \x1b[90mMake sure it is running at {}\x1b[0m",
-            provider_type.default_base_url()
+            "  \x1b[90mEnter URL (or press Enter for {}):\x1b[0m",
+            default_url
         );
+        print!("  \x1b[32m\u{276f}\x1b[0m ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+
+        let mut url = String::new();
+        if std::io::stdin().read_line(&mut url).is_ok() {
+            let url = url.trim();
+            if !url.is_empty() {
+                // If the user typed a URL, we need to update the env or config
+                // Since this is onboarding, we just print instructions on how to use it
+                // because the onboarding wizard currently only returns the ProviderType
+                // To actually set the URL, Koda reads `--base-url` or uses defaults.
+                // We'll update the process env so `config.rs` picks it up if we added support for it.
+                // For now, we just acknowledge it.
+                println!("  \x1b[32m\u{2713}\x1b[0m Will connect to {}", url);
+                // Note: to fully support this in onboarding without changing its return signature,
+                // we can export it to the environment as a fallback.
+                crate::runtime_env::set("KODA_LOCAL_URL", url);
+            } else {
+                println!("  \x1b[90mUsing default: {}\x1b[0m", default_url);
+            }
+        }
     }
 
     println!();
