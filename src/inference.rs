@@ -405,7 +405,7 @@ pub async fn inference_loop(
         if tool_calls.len() > 1
             && can_parallelize(&tool_calls, mode, &settings.approval.allowed_commands)
         {
-            execute_tools_parallel(&tool_calls, project_root, config, db, session_id, tools)
+            execute_tools_parallel(&tool_calls, project_root, config, db, session_id, tools, mode, &settings.approval.allowed_commands)
                 .await?;
         } else {
             execute_tools_sequential(
@@ -456,9 +456,16 @@ async fn execute_one_tool(
     config: &KodaConfig,
     db: &Database,
     tools: &crate::tools::ToolRegistry,
+    mode: ApprovalMode,
+    allowed_commands: &[String],
 ) -> (String, String) {
     let result = if tc.function_name == "InvokeAgent" {
-        match execute_sub_agent(project_root, config, db, &tc.arguments).await {
+        // Sub-agents inherit the parent's approval mode.
+        // We pass a clone of allowed_commands since parallel sub-agents
+        // can't mutate the shared settings.
+        let mut sub_settings = Settings::default();
+        sub_settings.approval.allowed_commands = allowed_commands.to_vec();
+        match execute_sub_agent(project_root, config, db, &tc.arguments, mode, &mut sub_settings).await {
             Ok(output) => output,
             Err(e) => format!("Error invoking sub-agent: {e}"),
         }
@@ -478,6 +485,8 @@ async fn execute_tools_parallel(
     db: &Database,
     session_id: &str,
     tools: &crate::tools::ToolRegistry,
+    mode: ApprovalMode,
+    allowed_commands: &[String],
 ) -> Result<()> {
     // Print all tool call banners upfront
     for tc in tool_calls {
@@ -490,7 +499,7 @@ async fn execute_tools_parallel(
     // Launch all tool calls concurrently
     let futures: Vec<_> = tool_calls
         .iter()
-        .map(|tc| execute_one_tool(tc, project_root, config, db, tools))
+        .map(|tc| execute_one_tool(tc, project_root, config, db, tools, mode, allowed_commands))
         .collect();
     let results = futures_util::future::join_all(futures).await;
 
@@ -640,7 +649,7 @@ async fn execute_tools_sequential(
             }
         }
 
-        let (_, result) = execute_one_tool(tc, project_root, config, db, tools).await;
+        let (_, result) = execute_one_tool(tc, project_root, config, db, tools, mode, &settings.approval.allowed_commands).await;
         display::print_tool_output(&tc.function_name, &result);
 
         db.insert_message(
@@ -664,6 +673,8 @@ async fn execute_sub_agent(
     parent_config: &KodaConfig,
     db: &Database,
     arguments: &str,
+    mode: ApprovalMode,
+    settings: &mut Settings,
 ) -> Result<String> {
     let args: serde_json::Value = serde_json::from_str(arguments)?;
     let agent_name = args["agent_name"]
@@ -748,11 +759,69 @@ async fn execute_sub_agent(
 
         for tc in &response.tool_calls {
             display::print_tool_call(tc, true);
-            let result = tools.execute(&tc.function_name, &tc.arguments).await;
+
+            // Sub-agents inherit the parent's approval mode
+            let parsed_args: serde_json::Value =
+                serde_json::from_str(&tc.arguments).unwrap_or_default();
+            let approval = approval::check_tool(
+                &tc.function_name,
+                &parsed_args,
+                mode,
+                &settings.approval.allowed_commands,
+            );
+
+            let output = match approval {
+                ToolApproval::AutoApprove => {
+                    tools.execute(&tc.function_name, &tc.arguments).await.output
+                }
+                ToolApproval::Blocked => {
+                    let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                    println!("  \x1b[33m\u{1f4cb} Would execute: {detail}\x1b[0m");
+                    "[plan mode] Action described but not executed.".to_string()
+                }
+                ToolApproval::NeedsConfirmation => {
+                    let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                    let diff_preview =
+                        preview::compute(&tc.function_name, &parsed_args, project_root).await;
+                    let whitelist_hint = if tc.function_name == "Bash" {
+                        let cmd = parsed_args.get("command")
+                            .or(parsed_args.get("cmd"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let pattern = approval::extract_whitelist_pattern(cmd);
+                        if pattern.is_empty() { None } else { Some(pattern) }
+                    } else {
+                        None
+                    };
+                    match confirm::confirm_tool_action(
+                        &tc.function_name,
+                        &detail,
+                        diff_preview.as_deref(),
+                        whitelist_hint.as_deref(),
+                    ) {
+                        confirm::Confirmation::Approved => {
+                            tools.execute(&tc.function_name, &tc.arguments).await.output
+                        }
+                        confirm::Confirmation::AlwaysAllow => {
+                            if let Some(ref pattern) = whitelist_hint {
+                                let _ = settings.add_allowed_command(pattern);
+                            }
+                            tools.execute(&tc.function_name, &tc.arguments).await.output
+                        }
+                        confirm::Confirmation::Rejected => {
+                            "[rejected by user]".to_string()
+                        }
+                        confirm::Confirmation::RejectedWithFeedback(fb) => {
+                            format!("[rejected: {fb}]")
+                        }
+                    }
+                }
+            };
+
             db.insert_message(
                 &sub_session,
                 &Role::Tool,
-                Some(&result.output),
+                Some(&output),
                 None,
                 Some(&tc.id),
                 None,

@@ -30,7 +30,7 @@ pub enum Confirmation {
 /// and an arrow-key selector with Approve / Reject / Reject with feedback.
 /// For Bash commands, also offers "Always allow" to whitelist the pattern.
 pub fn confirm_tool_action(
-    tool_name: &str,
+    _tool_name: &str,
     detail: &str,
     preview: Option<&str>,
     whitelist_hint: Option<&str>,

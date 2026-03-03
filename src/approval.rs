@@ -296,30 +296,45 @@ const SAFE_PREFIXES: &[&str] = &[
 /// Patterns that override safety even if the base command is safe.
 /// These are checked against the FULL command string.
 const DANGEROUS_PATTERNS: &[&str] = &[
+    // Destructive file operations
     "rm ",
     "rm\t",
     "rmdir ",
+    // Privilege escalation
     "sudo ",
     "su ",
+    // Low-level disk ops
     "dd ",
     "mkfs",
     "fdisk",
+    // Permission changes
     "chmod ",
     "chown ",
+    // Pipe to shell (command injection)
     "| sh",
     "| bash",
     "| zsh",
+    // Command substitution / eval (shell injection)
+    "$(",
+    "`",
+    "eval ",
+    "eval\t",
+    // Device writes
     "> /dev/",
+    // Process control
     "kill ",
     "killall ",
     "pkill ",
+    // Destructive git
     "git push -f",
     "git push --force",
     "git reset --hard",
     "git clean -fd",
+    // System control
     "reboot",
     "shutdown",
     "halt",
+    // Package publishing
     "npm publish",
     "cargo publish",
 ];
@@ -735,6 +750,20 @@ mod tests {
         assert!(!is_command_safe("git reset --hard HEAD~5", &wl));
         assert!(!is_command_safe("chmod 777 /etc/passwd", &wl));
         assert!(!is_command_safe("kill -9 1234", &wl));
+    }
+
+    #[test]
+    fn test_command_substitution_is_dangerous() {
+        let wl: Vec<String> = vec![];
+        // $() command substitution
+        assert!(!is_command_safe("echo $(rm -rf /)", &wl));
+        assert!(!is_command_safe("echo $(whoami)", &wl));
+        // Backtick command substitution
+        assert!(!is_command_safe("echo `rm -rf /`", &wl));
+        assert!(!is_command_safe("echo `whoami`", &wl));
+        // eval
+        assert!(!is_command_safe("eval 'rm -rf /'", &wl));
+        assert!(!is_command_safe("eval\t'dangerous'", &wl));
     }
 
     #[test]

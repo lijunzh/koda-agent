@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `/trust` and `/exit` added to `/help` menu
 
 ### Fixed
+- **Sub-agent approval bypass**: sub-agents now inherit the parent's approval mode
+  (plan/normal/yolo). Previously sub-agents could run Write/Delete/Bash without confirmation.
+- **Shell injection patterns**: `$(...)`, backticks, and `eval` are now classified as dangerous
+  and require confirmation in Normal mode
 - Bash tool now refuses to run `grep`, `cat`, `find`, `ls` (use built-in tools instead)
 - `Esc` clears the input line; `Ctrl-C` clears input or exits when empty
 - Suppress empty "Response" banner when LLM only returns tool calls
