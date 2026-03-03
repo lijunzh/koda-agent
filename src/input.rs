@@ -358,19 +358,18 @@ impl ConditionalEventHandler for ShiftTabModeHandler {
         _ctx: &EventContext,
     ) -> Option<Cmd> {
         let new_mode = crate::approval::cycle_mode(&self.shared_mode);
-        // Print mode change notification above the prompt
-        let mode_color = match new_mode {
-            crate::approval::ApprovalMode::Plan => "\x1b[33m",   // yellow
-            crate::approval::ApprovalMode::Normal => "\x1b[32m", // green
-            crate::approval::ApprovalMode::Yolo => "\x1b[31m",   // red
+        let (icon, color) = match new_mode {
+            crate::approval::ApprovalMode::Plan => ("\u{1f4cb}", "\x1b[33m"),   // 📋 yellow
+            crate::approval::ApprovalMode::Normal => ("\u{1f6e1}\u{fe0f}", "\x1b[32m"), // 🛡️ green
+            crate::approval::ApprovalMode::Yolo => ("\u{26a1}", "\x1b[31m"),    // ⚡ red
         };
+        // Overwrite the current prompt line with a compact notification,
+        // then Repaint redraws the prompt below it.
         eprint!(
-            "\r\x1b[K  {mode_color}\u{1f43b} Mode: {}\x1b[0m — {}\n",
+            "\r\x1b[K  {icon} {color}{}\x1b[0m\n",
             new_mode.label(),
-            new_mode.description()
         );
-        // Force prompt re-render by returning AcceptLine with empty input
-        // Actually, just refresh the line
+        let _ = std::io::Write::flush(&mut std::io::stderr());
         Some(Cmd::Repaint)
     }
 }

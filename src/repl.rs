@@ -63,15 +63,12 @@ pub async fn handle_command(
         "/mode" => match arg {
             Some(mode_name) => ReplAction::SetMode(mode_name.to_string()),
             None => {
-                // Show current modes with descriptions
                 use crate::approval::ApprovalMode;
                 println!();
-                println!("  \x1b[1mApproval Modes\x1b[0m (cycle with Shift+Tab):");
-                for m in [ApprovalMode::Plan, ApprovalMode::Normal, ApprovalMode::Yolo] {
-                    println!("    \x1b[36m{:<8}\x1b[0m {}", m.label(), m.description());
-                }
-                println!();
-                println!("  Usage: \x1b[36m/mode plan\x1b[0m, \x1b[36m/mode normal\x1b[0m, \x1b[36m/mode yolo\x1b[0m");
+                println!("  \x1b[1mApproval Modes\x1b[0m  (cycle with \x1b[36mShift+Tab\x1b[0m)");
+                println!("    \x1b[33m\u{1f4cb} plan\x1b[0m     {}", ApprovalMode::Plan.description());
+                println!("    \x1b[32m\u{1f6e1}\u{fe0f} normal\x1b[0m   {}", ApprovalMode::Normal.description());
+                println!("    \x1b[31m\u{26a1} yolo\x1b[0m     {}", ApprovalMode::Yolo.description());
                 println!();
                 ReplAction::Handled
             }
@@ -287,6 +284,7 @@ pub fn print_banner(config: &KodaConfig, _session_id: &str, recent_activity: &[S
         "  \x1b[90m/model\x1b[0m      pick a model".to_string(),
         "  \x1b[90m/provider\x1b[0m   switch provider".to_string(),
         "  \x1b[90m/help\x1b[0m       all commands".to_string(),
+        "  \x1b[90mShift+Tab\x1b[0m   plan \x1b[90m\u{2192}\x1b[0m normal \x1b[90m\u{2192}\x1b[0m yolo".to_string(),
         sep_line,
     ];
 
