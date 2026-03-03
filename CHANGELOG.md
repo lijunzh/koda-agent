@@ -4,6 +4,39 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.2] - 2026-03-02
+
+✨ **Highlights:** approval modes (plan/normal/yolo) · diff preview before confirmation · loop detection · native Gemini provider · extended thinking display
+
+### Added
+- **Approval modes** (`/trust`): Plan (read-only), Normal (smart confirm), Yolo (auto-approve)
+  - Interactive picker via `/trust` command
+  - `Shift+Tab` cycles modes inline; mode name shown in prompt
+  - Bash safety classification: parses pipelines against safe-command whitelist
+- **Diff preview**: Edit, Write, and Delete tools show a unified diff before confirmation
+- **Loop detection**: detects repeated identical tool calls and prompts the user
+  - Configurable hard cap on iterations with interactive extend-or-stop
+- **Native Gemini provider**: direct Google AI API (replaces OpenAI-compat shim)
+- **Structured thinking renderer**: extended thinking blocks display with violet `│` gutter
+- **Prompt token count** shown in response footer alongside completion tokens
+- **Model settings**: extended thinking budget and reasoning effort configuration
+- **Anthropic dynamic model list**: fetches from `/v1/models` endpoint instead of hardcoded list
+- **Stale-read optimization**: skips re-reading files the LLM just wrote
+- `/trust` and `/exit` added to `/help` menu
+
+### Fixed
+- Bash tool now refuses to run `grep`, `cat`, `find`, `ls` (use built-in tools instead)
+- `Esc` clears the input line; `Ctrl-C` clears input or exits when empty
+- Suppress empty "Response" banner when LLM only returns tool calls
+- Warn when model silently exits mid-task after tool use
+- Shell tool output display cleaned up
+- BackTab keybinding panic from radix_trie collision
+- Mode switch updates prompt in-place (no stacking lines)
+- Plan mode log uses prompt icon (📋) and yellow color
+
+### Removed
+- Dead code cleanup and stale doc reconciliation
+
 ## [0.1.1] - 2026-03-02
 
 ### Performance

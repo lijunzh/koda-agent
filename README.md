@@ -31,8 +31,12 @@ echo "explain this" | koda        # Piped input
 - **15 built-in tools** — file ops, search, shell, web fetch, memory, agents
 - **6 LLM providers** — LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
 - **5 embedded agents** — default, code reviewer, security auditor, test writer, release engineer
+- **Approval modes** — plan (read-only) / normal (smart confirm) / yolo (auto-approve) via `/trust`
+- **Diff preview** — see exactly what changes before approving Edit, Write, Delete
+- **Loop detection** — catches repeated tool calls with configurable iteration caps
 - **Parallel execution** — concurrent tool calls and sub-agent orchestration
 - **Smart context** — auto-compact at 80%, sliding window, prompt caching (Anthropic)
+- **Extended thinking** — structured thinking block display with configurable budgets
 - **Image analysis** — `@image.png` or drag-and-drop for multi-modal input
 - **Git integration** — `/diff` review, commit message generation
 - **Headless mode** — `koda -p "prompt"` with JSON output for CI/CD
@@ -51,13 +55,15 @@ echo "explain this" | koda        # Piped input
 | `/model` | Pick a model (↑↓ arrow keys) |
 | `/provider` | Switch LLM provider |
 | `/sessions` | List, resume, or delete sessions |
+| `/trust` | Switch approval mode (plan/normal/yolo) |
+| `/exit` | Quit Koda |
 
-**Tips:** `@file` to attach context · `Ctrl+C` to interrupt · `Ctrl+D` to exit
+**Tips:** `@file` to attach context · `Shift+Tab` to cycle trust mode · `Esc` to clear input
 
 ## Documentation
 
 - **[DESIGN.md](DESIGN.md)** — Architecture, technical stack, component breakdown
-- **[FUTURE.md](FUTURE.md)** — Roadmap, competitive analysis, v0.2.0 plans
+- **[FUTURE.md](FUTURE.md)** — Roadmap and competitive analysis
 - **[CHANGELOG.md](CHANGELOG.md)** — Release history and detailed feature list
 
 ## Development
@@ -68,8 +74,7 @@ cargo clippy        # Lint
 cargo run           # Run locally
 ```
 
-**v0.1.x** delivers a rock-solid agent with all essential features.
-**v0.2.0** is being built with Koda itself — MCP protocol, concurrent TUI, browser automation.
+**v0.1.x** delivers a rock-solid agent with extensibility coming next (MCP protocol).
 See [FUTURE.md](FUTURE.md) for the full roadmap.
 
 ## License

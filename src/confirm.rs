@@ -35,10 +35,9 @@ pub fn confirm_tool_action(
     preview: Option<&str>,
     whitelist_hint: Option<&str>,
 ) -> Confirmation {
-    // Show the action details (skip for Bash — header already shows the command)
-    if tool_name != "Bash" {
-        println!("  \x1b[90m{detail}\x1b[0m");
-    }
+    // Show the action details
+    // For Bash: always show the full command (banner truncates long commands)
+    println!("  \x1b[90m{detail}\x1b[0m");
 
     // Show diff preview if available
     if let Some(preview_text) = preview {
