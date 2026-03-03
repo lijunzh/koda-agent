@@ -231,11 +231,19 @@ pub async fn handle_command(
 /// Available providers for the interactive picker.
 pub const PROVIDERS: &[(&str, &str, &str)] = &[
     ("lmstudio", "LM Studio", "Local models, no API key needed"),
-    ("openai", "OpenAI", "GPT-4o, GPT-4, GPT-3.5"),
-    ("anthropic", "Anthropic", "Claude Sonnet, Haiku, Opus"),
+    ("ollama", "Ollama", "Local models, no API key needed"),
+    ("openai", "OpenAI", "GPT-4o, o1, o3"),
+    ("anthropic", "Anthropic", "Claude Sonnet, Opus"),
+    ("deepseek", "DeepSeek", "DeepSeek-V3, R1"),
     ("gemini", "Google Gemini", "Gemini 2.0 Flash, Pro"),
-    ("groq", "Groq", "Llama 3.3, Mixtral (fast)"),
+    ("groq", "Groq", "Fast inference"),
     ("grok", "Grok (xAI)", "Grok-3, Grok-2"),
+    ("mistral", "Mistral", "Mistral Large, Codestral"),
+    ("minimax", "MiniMax", "MiniMax-01"),
+    ("openrouter", "OpenRouter", "Meta-provider, 100+ models"),
+    ("together", "Together", "Open-source model hosting"),
+    ("fireworks", "Fireworks", "Fast inference"),
+    ("vllm", "vLLM", "Local high-performance serving"),
 ];
 
 // \u{2500}\u{2500} Display Helpers \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}

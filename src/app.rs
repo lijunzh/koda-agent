@@ -36,34 +36,32 @@ pub async fn run(
     let provider: Arc<RwLock<Box<dyn LlmProvider>>> =
         Arc::new(RwLock::new(create_provider(&config)));
 
-    // Auto-detect the serving model for LM Studio
-    if config.provider_type == ProviderType::LMStudio {
+    // Auto-detect the serving model for local providers
+    if config.model == "auto-detect" {
         let prov = provider.read().await;
         match prov.list_models().await {
             Ok(models) if !models.is_empty() => {
                 config.model = models[0].id.clone();
                 config.model_settings.model = config.model.clone();
-                tracing::info!("Auto-detected LM Studio model: {}", config.model);
+                tracing::info!("Auto-detected model: {}", config.model);
             }
             Ok(_) => {
                 config.model = "(no model loaded)".to_string();
                 config.model_settings.model = config.model.clone();
-                eprintln!("  \x1b[33m\u{26a0} No model loaded in LM Studio.\x1b[0m");
                 eprintln!(
-                    "    Load a model in LM Studio, then use \x1b[36m/model\x1b[0m to select it."
+                    "  \x1b[33m\u{26a0} No model loaded in {}.\x1b[0m",
+                    config.provider_type
                 );
+                eprintln!("    Load a model, then use \x1b[36m/model\x1b[0m to select it.");
             }
             Err(e) => {
                 config.model = "(connection failed)".to_string();
                 config.model_settings.model = config.model.clone();
                 eprintln!(
-                    "  \x1b[31m\u{2717} Could not connect to LM Studio at {}\x1b[0m",
-                    config.base_url
+                    "  \x1b[31m\u{2717} Could not connect to {} at {}\x1b[0m",
+                    config.provider_type, config.base_url
                 );
-                eprintln!("    {e}");
-                eprintln!(
-                    "    Make sure LM Studio is running, or switch provider with \x1b[36m/provider\x1b[0m"
-                );
+                tracing::warn!("Auto-detect failed: {e}");
             }
         }
     }
@@ -891,7 +889,7 @@ async fn handle_setup_provider(
     base_url: String,
 ) {
     let env_name = ptype.env_key_name();
-    let key_missing = ptype != ProviderType::LMStudio && !crate::runtime_env::is_set(env_name);
+    let key_missing = ptype.requires_api_key() && !crate::runtime_env::is_set(env_name);
     let is_same_provider = ptype == config.provider_type;
 
     config.provider_type = ptype.clone();
@@ -899,7 +897,7 @@ async fn handle_setup_provider(
     config.model = ptype.default_model().to_string();
     config.model_settings.model = config.model.clone();
 
-    if key_missing || (is_same_provider && ptype != ProviderType::LMStudio) {
+    if key_missing || (is_same_provider && ptype.requires_api_key()) {
         let prompt_msg = if is_same_provider {
             format!(
                 "  Update {} API key (enter to keep current): ",

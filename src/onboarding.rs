@@ -33,11 +33,25 @@ pub fn run_wizard() -> Option<ProviderType> {
             "LM Studio",
             "Local models, no API key needed (localhost:1234)",
         ),
+        SelectOption::new(
+            "Ollama",
+            "Local models, no API key needed (localhost:11434)",
+        ),
         SelectOption::new("OpenAI", "GPT-4o, o1, o3 (requires API key)"),
         SelectOption::new("Anthropic", "Claude Sonnet, Opus (requires API key)"),
+        SelectOption::new("DeepSeek", "DeepSeek-V3, R1 (requires API key)"),
         SelectOption::new("Gemini", "Google Gemini (requires API key)"),
         SelectOption::new("Groq", "Fast inference (requires API key)"),
         SelectOption::new("Grok", "xAI Grok (requires API key)"),
+        SelectOption::new("Mistral", "Mistral Large, Codestral (requires API key)"),
+        SelectOption::new("MiniMax", "MiniMax-01 (requires API key)"),
+        SelectOption::new(
+            "OpenRouter",
+            "Meta-provider, 100+ models (requires API key)",
+        ),
+        SelectOption::new("Together", "Open-source model hosting (requires API key)"),
+        SelectOption::new("Fireworks", "Fast inference (requires API key)"),
+        SelectOption::new("vLLM", "Local high-performance serving (localhost:8000)"),
     ];
 
     let selection = match crate::tui::select("\u{1f43b} Choose your LLM provider", &options, 0) {
@@ -52,17 +66,25 @@ pub fn run_wizard() -> Option<ProviderType> {
 
     let provider_type = match selection {
         0 => ProviderType::LMStudio,
-        1 => ProviderType::OpenAI,
-        2 => ProviderType::Anthropic,
-        3 => ProviderType::Gemini,
-        4 => ProviderType::Groq,
-        5 => ProviderType::Grok,
+        1 => ProviderType::Ollama,
+        2 => ProviderType::OpenAI,
+        3 => ProviderType::Anthropic,
+        4 => ProviderType::DeepSeek,
+        5 => ProviderType::Gemini,
+        6 => ProviderType::Groq,
+        7 => ProviderType::Grok,
+        8 => ProviderType::Mistral,
+        9 => ProviderType::MiniMax,
+        10 => ProviderType::OpenRouter,
+        11 => ProviderType::Together,
+        12 => ProviderType::Fireworks,
+        13 => ProviderType::Vllm,
         _ => ProviderType::LMStudio,
     };
 
     // Step 2: API key (if needed)
     let env_key = provider_type.env_key_name();
-    if env_key != "KODA_API_KEY" {
+    if provider_type.requires_api_key() {
         // Cloud provider — needs an API key
         if crate::runtime_env::is_set(env_key) {
             println!();
@@ -104,8 +126,14 @@ pub fn run_wizard() -> Option<ProviderType> {
         }
     } else {
         println!();
-        println!("  \x1b[32m\u{2713}\x1b[0m LM Studio selected \u{2014} no API key needed");
-        println!("  \x1b[90mMake sure LM Studio is running on localhost:1234\x1b[0m");
+        println!(
+            "  \x1b[32m\u{2713}\x1b[0m {} selected \u{2014} no API key needed",
+            provider_type
+        );
+        println!(
+            "  \x1b[90mMake sure it is running at {}\x1b[0m",
+            provider_type.default_base_url()
+        );
     }
 
     println!();
