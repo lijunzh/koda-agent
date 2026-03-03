@@ -66,9 +66,11 @@ pub async fn ast_analysis(project_root: &Path, args: &Value) -> Result<String> {
     let language = match extension {
         "rs" => tree_sitter_rust::LANGUAGE.into(),
         "py" => tree_sitter_python::LANGUAGE.into(),
+        "js" => tree_sitter_javascript::LANGUAGE.into(),
+        "ts" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         _ => {
             return Ok(format!(
-                "Error: Unsupported file type '.{}'. AstAnalysis currently supports .rs and .py",
+                "Error: Unsupported file type '.{}'. AstAnalysis currently supports .rs, .py, .js, and .ts",
                 extension
             ));
         }
@@ -110,6 +112,7 @@ fn analyze_file_structure(
     let (func_type, class_type, name_field) = match extension {
         "rs" => ("function_item", "struct_item", "name"),
         "py" => ("function_definition", "class_definition", "name"),
+        "js" | "ts" => ("function_declaration", "class_declaration", "name"),
         _ => ("", "", ""),
     };
 
@@ -216,7 +219,8 @@ fn get_call_graph(
 
         // Detect function definition to set the caller context
         if ((extension == "rs" && kind == "function_item")
-            || (extension == "py" && kind == "function_definition"))
+            || (extension == "py" && kind == "function_definition")
+            || ((extension == "js" || extension == "ts") && kind == "function_declaration"))
             && let Some(name_node) = node.child_by_field_name("name")
             && let Ok(name) = std::str::from_utf8(&source[name_node.byte_range()])
         {
@@ -230,7 +234,8 @@ fn get_call_graph(
         // Detect function calls inside the current function context
         if let Some(caller) = &current_caller
             && ((extension == "rs" && kind == "call_expression")
-                || (extension == "py" && kind == "call"))
+                || (extension == "py" && kind == "call")
+                || ((extension == "js" || extension == "ts") && kind == "call_expression"))
             && let Some(func_node) = node.child_by_field_name("function")
             && let Ok(call_text) = std::str::from_utf8(&source[func_node.byte_range()])
         {
