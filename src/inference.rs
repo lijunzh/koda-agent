@@ -734,7 +734,6 @@ async fn execute_sub_agent(
         &sub_config.system_prompt,
         &semantic_memory,
         &sub_config.agents_dir,
-        project_root,
     );
 
     let system_tokens = system_prompt.len() / 4 + 100;
@@ -875,7 +874,6 @@ pub fn build_system_prompt(
     base_prompt: &str,
     semantic_memory: &str,
     agents_dir: &Path,
-    project_root: &Path,
 ) -> String {
     let mut prompt = base_prompt.to_string();
 
@@ -906,19 +904,6 @@ pub fn build_system_prompt(
              The following are learned facts about this project:\n\
              {semantic_memory}"
         ));
-    }
-
-    // Auto-load .koda-rules if present (like Cursor's .cursorrules)
-    let rules_path = project_root.join(".koda-rules");
-    if let Ok(rules) = std::fs::read_to_string(&rules_path) {
-        let rules = rules.trim();
-        if !rules.is_empty() {
-            prompt.push_str(&format!(
-                "\n\n## Project Rules (.koda-rules)\n\
-                 The following project-specific rules MUST be followed:\n\
-                 {rules}"
-            ));
-        }
     }
 
     prompt
@@ -1038,7 +1023,7 @@ mod tests {
     #[test]
     fn test_build_system_prompt_no_agents_no_memory() {
         let dir = TempDir::new().unwrap();
-        let result = build_system_prompt("You are helpful.", "", dir.path(), dir.path());
+        let result = build_system_prompt("You are helpful.", "", dir.path());
         assert!(result.contains("You are helpful."));
         assert!(result.contains("No sub-agents are configured"));
         assert!(!result.contains("Project Memory"));
@@ -1049,7 +1034,7 @@ mod tests {
     #[test]
     fn test_build_system_prompt_with_memory() {
         let dir = TempDir::new().unwrap();
-        let result = build_system_prompt("Base prompt.", "Uses Rust. Prefers tokio.", dir.path(), dir.path());
+        let result = build_system_prompt("Base prompt.", "Uses Rust. Prefers tokio.", dir.path());
         assert!(result.contains("Base prompt."));
         assert!(result.contains("Project Memory"));
         assert!(result.contains("Uses Rust"));
@@ -1061,7 +1046,7 @@ mod tests {
         std::fs::write(dir.path().join("reviewer.json"), "{}").unwrap();
         std::fs::write(dir.path().join("planner.json"), "{}").unwrap();
 
-        let result = build_system_prompt("Base.", "", dir.path(), dir.path());
+        let result = build_system_prompt("Base.", "", dir.path());
         assert!(result.contains("Available Sub-Agents"));
         assert!(result.contains("reviewer"));
         assert!(result.contains("planner"));
@@ -1074,28 +1059,10 @@ mod tests {
         std::fs::write(dir.path().join("README.md"), "docs").unwrap();
         std::fs::write(dir.path().join("agent.json"), "{}").unwrap();
 
-        let result = build_system_prompt("Base.", "", dir.path(), dir.path());
+        let result = build_system_prompt("Base.", "", dir.path());
         assert!(result.contains("agent"));
         // README.md should not appear as an agent
         assert!(!result.contains("README"));
-    }
-
-    #[test]
-    fn test_build_system_prompt_loads_koda_rules() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join(".koda-rules"), "Always use snake_case.").unwrap();
-
-        let result = build_system_prompt("Base.", "", dir.path(), dir.path());
-        assert!(result.contains("Project Rules"));
-        assert!(result.contains("Always use snake_case."));
-    }
-
-    #[test]
-    fn test_build_system_prompt_no_koda_rules() {
-        let dir = TempDir::new().unwrap();
-        // No .koda-rules file
-        let result = build_system_prompt("Base.", "", dir.path(), dir.path());
-        assert!(!result.contains("Project Rules"));
     }
 
     #[test]

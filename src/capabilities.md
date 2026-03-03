@@ -56,9 +56,11 @@ MCP tools appear alongside built-in tools with namespaced names (e.g. `github.cr
 
 ### Persistent Memory
 
-- Project memory: `MEMORY.md` in project root
+- Project memory: `MEMORY.md` in project root (also reads `CLAUDE.md` and `AGENTS.md` for compatibility)
 - Global memory: `~/.config/koda/memory.md`
-- The user can also create `.koda-rules` in the project root for project-specific instructions
+- Use `MemoryWrite` to save rules, conventions, or learned facts
+- Memory is injected into the system prompt automatically every turn
+- Users can edit MEMORY.md directly for project-specific rules and preferences
 
 ### Sub-Agents
 
