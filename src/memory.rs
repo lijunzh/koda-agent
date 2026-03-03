@@ -58,11 +58,11 @@ pub fn load(project_root: &Path) -> Result<String> {
 /// currently uses `CLAUDE.md` or `AGENTS.md` for reading.
 pub fn append(project_root: &Path, entry: &str) -> Result<()> {
     use std::io::Write;
-    
+
     // Determine the active file, or default to MEMORY.md
-    let target_filename = active_project_file(project_root)
-        .unwrap_or_else(|| KODA_MEMORY_FILE.to_string());
-        
+    let target_filename =
+        active_project_file(project_root).unwrap_or_else(|| KODA_MEMORY_FILE.to_string());
+
     let path = project_root.join(&target_filename);
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -221,7 +221,7 @@ mod tests {
 
         // It should NOT create MEMORY.md
         assert!(!tmp.path().join("MEMORY.md").exists());
-        
+
         // It SHOULD append to CLAUDE.md
         let memory = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
         assert!(memory.contains("new koda insight"));
