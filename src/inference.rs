@@ -5,9 +5,9 @@
 
 use crate::approval::{self, ApprovalMode, Settings, ToolApproval};
 use crate::config::KodaConfig;
-use crate::confirm::{self, Confirmation};
+use crate::confirm;
 use crate::db::{Database, Role};
-use crate::engine::EngineEvent;
+use crate::engine::{ApprovalDecision, EngineEvent};
 use crate::interrupt;
 use crate::loop_guard::{self, LoopDetector};
 use crate::memory;
@@ -689,14 +689,14 @@ async fn execute_tools_sequential(
                     None
                 };
 
-                match confirm::confirm_tool_action(
+                match sink.request_approval(
                     &tc.function_name,
                     &detail,
                     diff_preview.as_deref(),
                     whitelist_hint.as_deref(),
                 ) {
-                    Confirmation::Approved => {}
-                    Confirmation::AlwaysAllow => {
+                    ApprovalDecision::Approve => {}
+                    ApprovalDecision::AlwaysAllow => {
                         // Add to whitelist and persist
                         if let Some(ref pattern) = whitelist_hint {
                             if let Err(e) = settings.add_allowed_command(pattern) {
@@ -709,7 +709,7 @@ async fn execute_tools_sequential(
                         }
                         // Fall through to execute
                     }
-                    Confirmation::Rejected => {
+                    ApprovalDecision::Reject => {
                         db.insert_message(
                             session_id,
                             &Role::Tool,
@@ -721,7 +721,7 @@ async fn execute_tools_sequential(
                         .await?;
                         continue;
                     }
-                    Confirmation::RejectedWithFeedback(feedback) => {
+                    ApprovalDecision::RejectWithFeedback { feedback } => {
                         let result = format!("User rejected this action with feedback: {feedback}");
                         db.insert_message(
                             session_id,
@@ -913,24 +913,24 @@ async fn execute_sub_agent(
                     } else {
                         None
                     };
-                    match confirm::confirm_tool_action(
+                    match sink.request_approval(
                         &tc.function_name,
                         &detail,
                         diff_preview.as_deref(),
                         whitelist_hint.as_deref(),
                     ) {
-                        confirm::Confirmation::Approved => {
+                        ApprovalDecision::Approve => {
                             tools.execute(&tc.function_name, &tc.arguments).await.output
                         }
-                        confirm::Confirmation::AlwaysAllow => {
+                        ApprovalDecision::AlwaysAllow => {
                             if let Some(ref pattern) = whitelist_hint {
                                 let _ = settings.add_allowed_command(pattern);
                             }
                             tools.execute(&tc.function_name, &tc.arguments).await.output
                         }
-                        confirm::Confirmation::Rejected => "[rejected by user]".to_string(),
-                        confirm::Confirmation::RejectedWithFeedback(fb) => {
-                            format!("[rejected: {fb}]")
+                        ApprovalDecision::Reject => "[rejected by user]".to_string(),
+                        ApprovalDecision::RejectWithFeedback { feedback } => {
+                            format!("[rejected: {feedback}]")
                         }
                     }
                 }
