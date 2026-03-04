@@ -4,9 +4,12 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.5] - 2026-03-03
+## [0.1.0] - 2026-03-03
 
-v0.1.5 completes the prototype phase. v0.1.x was an intentional simplified prototype to test the feasibility of building a high-performance AI coding agent in Rust. With the architecture validated, v0.2.0 will evolve Koda into a modern client-server platform.
+First published release of `koda-core` and `koda-cli` as separate crates.
+v0.1.x was an intentional simplified prototype to test the feasibility of
+building a high-performance AI coding agent in Rust. With the architecture
+validated, v0.2.0 will evolve Koda into a modern client-server platform.
 
 ✨ **Highlights:** Workspace split · Channel-based approval · KodaAgent/KodaSession structs · CI/CD for dual crate publishing
 
