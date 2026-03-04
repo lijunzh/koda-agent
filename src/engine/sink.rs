@@ -36,11 +36,15 @@ pub trait EngineSink: Send + Sync {
 /// This reproduces the exact current terminal output by delegating
 /// to `display::` and `println!()`. It's the default sink used in
 /// interactive and headless modes.
-pub struct CliSink;
+pub struct CliSink {
+    md: std::sync::Mutex<crate::markdown::MarkdownStreamer>,
+}
 
 impl CliSink {
     pub fn new() -> Self {
-        Self
+        Self {
+            md: std::sync::Mutex::new(crate::markdown::MarkdownStreamer::new()),
+        }
     }
 }
 
@@ -53,9 +57,11 @@ impl Default for CliSink {
 impl EngineSink for CliSink {
     fn emit(&self, event: EngineEvent) {
         match event {
-            EngineEvent::TextDelta { .. } | EngineEvent::TextDone => {
-                // Streaming text is handled by MarkdownStreamer in inference.rs,
-                // not through the sink (yet). These events are for future clients.
+            EngineEvent::TextDelta { text } => {
+                self.md.lock().unwrap().push(&text);
+            }
+            EngineEvent::TextDone => {
+                self.md.lock().unwrap().flush();
             }
             EngineEvent::ThinkingStart => {
                 crate::display::print_thinking_banner();
