@@ -3,8 +3,10 @@
 //! CLI entry point. The binary is named `koda` for ergonomics.
 
 mod app;
+mod commands;
 mod confirm;
 mod display;
+mod headless;
 mod highlight;
 mod input;
 mod interrupt;
@@ -127,7 +129,7 @@ async fn main() -> Result<()> {
             Some(id) => id,
             None => db.create_session(&config.agent_name, &project_root).await?,
         };
-        let exit_code = app::run_headless(
+        let exit_code = headless::run_headless(
             project_root,
             config,
             db,
