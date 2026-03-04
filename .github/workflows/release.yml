@@ -35,7 +35,7 @@ jobs:
             echo "::error::Tag v$TAG does not match koda-cli version $CLI_VER"
             exit 1
           fi
-          echo "✅ Tag v$TAG matches both koda-core ($CORE_VER) and koda-cli ($CLI_VER)"
+          echo "✅ Tag v$TAG matches koda-core ($CORE_VER) and koda-cli ($CLI_VER)"
 
   build:
     name: Build ${{ matrix.target }}
@@ -109,6 +109,11 @@ jobs:
         run: sleep 30
       - name: Publish koda-cli
         run: cargo publish -p koda-cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish koda-agent (deprecation notice)
+        run: cargo publish -p koda-agent
+        continue-on-error: true
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
