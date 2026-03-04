@@ -82,9 +82,28 @@ pub async fn run_engine(
                     match action {
                         ReplAction::Quit => break,
                         ReplAction::ShowHelp => {
-                            let _ = ui_tx.send(UiEvent::Info(
-                                "Commands: /help /model /provider /cost /compact /sessions /trust /exit".into(),
-                            ));
+                            let help_lines = [
+                                "",
+                                "  🐻 Koda Commands",
+                                "",
+                                "  /agent      List available sub-agents",
+                                "  /compact    Summarize conversation to reclaim context",
+                                "  /cost       Show token usage for this session",
+                                "  /diff       Show git diff / review / commit message",
+                                "  /mcp        MCP servers: status / add / remove / restart",
+                                "  /memory     View/save project & global memory",
+                                "  /model      Pick a model interactively",
+                                "  /provider   Switch LLM provider",
+                                "  /sessions   List/resume/delete sessions",
+                                "  /trust      Set approval mode (always / auto / never)",
+                                "  /exit       Quit the session",
+                                "",
+                                "  Tips: @file to attach context · Tab to complete commands · PageUp/Down to scroll",
+                                "",
+                            ];
+                            for line in help_lines {
+                                let _ = ui_tx.send(UiEvent::Info(line.to_string()));
+                            }
                         }
                         ReplAction::ShowCost => {
                             if let Ok(u) = db.session_token_usage(&session_id).await {
@@ -96,9 +115,16 @@ pub async fn run_engine(
                             }
                         }
                         ReplAction::Handled | ReplAction::NotACommand => {}
+                        ReplAction::SwitchModel(model) => {
+                            let _ = ui_tx.send(UiEvent::Info(format!("✓ Model set to: {model}")));
+                        }
+                        ReplAction::Compact => {
+                            let _ = ui_tx.send(UiEvent::Info("Compacting conversation...".into()));
+                        }
                         _ => {
-                            let _ = ui_tx.send(UiEvent::Info(
-                                "Command not yet supported in TUI mode.".into(),
+                            let _ = ui_tx.send(UiEvent::Warn(
+                                "This command requires the classic REPL. Run koda without --tui."
+                                    .into(),
                             ));
                         }
                     }

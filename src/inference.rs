@@ -398,7 +398,27 @@ pub async fn inference_loop(
             }
 
             let footer = parts.join(" \u{00b7} ");
-            println!("\n\n\x1b[90m{footer}{ctx_part}\x1b[0m\n");
+
+            if crate::tui::event::is_tui_mode() {
+                crate::tui::event::try_send(crate::tui::event::UiEvent::Footer(
+                    crate::tui::event::FooterInfo {
+                        tokens: display_tokens,
+                        time: format_duration(total_elapsed),
+                        rate,
+                        context: ctx,
+                        cache_info: if total_cache_read_tokens > 0 {
+                            Some(format!(
+                                "cache: {} read",
+                                format_token_count(total_cache_read_tokens)
+                            ))
+                        } else {
+                            None
+                        },
+                    },
+                ));
+            } else {
+                println!("\n\n\x1b[90m{footer}{ctx_part}\x1b[0m\n");
+            }
 
             return Ok(());
         }
@@ -1001,6 +1021,17 @@ struct SimpleSpinner {
 
 impl SimpleSpinner {
     fn new(message: &str) -> Self {
+        // In TUI mode, the spinner is handled by the TUI renderer
+        if crate::tui::event::is_tui_mode() {
+            crate::tui::event::try_send(crate::tui::event::UiEvent::SpinnerStart(
+                message.to_string(),
+            ));
+            return Self {
+                message: std::sync::Arc::new(std::sync::Mutex::new(message.to_string())),
+                handle: None,
+            };
+        }
+
         let msg = std::sync::Arc::new(std::sync::Mutex::new(message.to_string()));
         let msg_clone = msg.clone();
         let start = Instant::now();
@@ -1034,6 +1065,10 @@ impl SimpleSpinner {
     fn finish_and_clear(&mut self) {
         if let Some(handle) = self.handle.take() {
             handle.abort();
+        }
+        if crate::tui::event::is_tui_mode() {
+            crate::tui::event::try_send(crate::tui::event::UiEvent::SpinnerStop);
+            return;
         }
         eprint!("\r\x1b[K");
         let _ = std::io::Write::flush(&mut std::io::stderr());

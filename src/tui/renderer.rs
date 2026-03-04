@@ -144,6 +144,37 @@ fn handle_key_event(
             let pos = st.cursor_pos;
             st.input.insert(pos, c);
             st.cursor_pos += c.len_utf8();
+
+            // Auto-complete slash commands on Tab
+        }
+        KeyCode::Tab => {
+            if st.input.starts_with('/') {
+                let commands = [
+                    "/help",
+                    "/agent",
+                    "/compact",
+                    "/cost",
+                    "/diff",
+                    "/mcp",
+                    "/memory",
+                    "/model",
+                    "/provider",
+                    "/sessions",
+                    "/trust",
+                    "/exit",
+                ];
+                let partial = st.input.as_str();
+                let matches: Vec<&&str> =
+                    commands.iter().filter(|c| c.starts_with(partial)).collect();
+                if matches.len() == 1 {
+                    st.input = matches[0].to_string();
+                    st.cursor_pos = st.input.len();
+                } else if matches.len() > 1 {
+                    // Show completions as info
+                    let completions = matches.iter().map(|c| **c).collect::<Vec<_>>().join("  ");
+                    st.push_line(format!("  {completions}"), LineStyle::Dim);
+                }
+            }
         }
         KeyCode::Backspace => {
             if st.cursor_pos > 0 {
@@ -201,9 +232,12 @@ fn apply_ui_event(state: &mut TuiState, event: UiEvent) {
     match event {
         UiEvent::TextDelta(text) => {
             // Streaming text: accumulate into the current line, break on \n
+            // We apply basic markdown detection when lines are complete
             state.append_text(&text, LineStyle::Normal);
         }
         UiEvent::TextDone => {
+            // Apply basic markdown styling to accumulated lines
+            apply_markdown_styles(state);
             state.push_line("", LineStyle::Normal);
         }
         UiEvent::ToolCall(tc) => {
@@ -225,6 +259,7 @@ fn apply_ui_event(state: &mut TuiState, event: UiEvent) {
             let _ = tool_name; // used for styling in future
         }
         UiEvent::ThinkingStart => {
+            state.push_line("", LineStyle::Normal);
             state.push_line("🍯 Thinking ⚡", LineStyle::Thinking);
         }
         UiEvent::ThinkingDelta(text) => {
@@ -234,7 +269,9 @@ fn apply_ui_event(state: &mut TuiState, event: UiEvent) {
         }
         UiEvent::ThinkingDone => {}
         UiEvent::ResponseStart => {
-            state.push_line("● Response", LineStyle::Normal);
+            state.push_line("", LineStyle::Normal);
+            state.push_line("● Response", LineStyle::Info);
+            state.push_line("", LineStyle::Normal);
         }
         UiEvent::SpinnerStart(msg) => {
             state.busy = true;
@@ -381,6 +418,24 @@ fn spinner_char() -> char {
         .as_millis()
         / 100) as usize;
     ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'][idx % 10]
+}
+
+/// Apply basic markdown styling to recently accumulated lines.
+/// This runs when TextDone fires, retroactively styling lines.
+fn apply_markdown_styles(state: &mut TuiState) {
+    for line in state.lines.iter_mut() {
+        if line.style != LineStyle::Normal {
+            continue;
+        }
+        let trimmed = line.text.trim();
+        if trimmed.starts_with("# ") || trimmed.starts_with("## ") || trimmed.starts_with("### ") {
+            line.style = LineStyle::ToolBanner; // Bold cyan for headers
+        } else if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            // Lists stay normal but that's fine
+        } else if trimmed.starts_with("```") {
+            line.style = LineStyle::Dim;
+        }
+    }
 }
 
 /// Truncate tool call arguments for display.
