@@ -3,19 +3,18 @@
 //! Handles user input, command dispatch, and delegates to the inference engine.
 
 use crate::input::{self, KodaHelper};
-use koda_core::approval::{self, ApprovalMode, Settings};
+use koda_core::agent::KodaAgent;
+use koda_core::approval::{self, ApprovalMode};
 use koda_core::config::{KodaConfig, ProviderType};
 use koda_core::db::{Database, Role};
-use koda_core::inference;
-use koda_core::memory;
 use koda_core::providers::LlmProvider;
+use koda_core::session::KodaSession;
 
 /// Number of recent messages to preserve during compaction.
 /// Keeps the user's last question + the assistant's last answer intact.
 const COMPACT_PRESERVE_COUNT: usize = 4;
 use crate::repl::{self, ReplAction};
 use crate::tui::{self, SelectOption};
-use koda_core::tools::ToolRegistry;
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -71,24 +70,18 @@ pub async fn run(
         koda_core::version::print_update_hint(&latest);
     }
 
-    // Initialize MCP servers from .mcp.json configs
-    let mcp_registry = Arc::new(tokio::sync::RwLock::new(koda_core::mcp::McpRegistry::new()));
-    {
-        let mut mcp = mcp_registry.write().await;
-        mcp.start_from_config(&project_root).await;
-    }
-
-    let tools = ToolRegistry::new(project_root.clone()).with_mcp_registry(mcp_registry.clone());
-    let tool_defs = tools.get_definitions(&config.allowed_tools);
-
-    let semantic_memory = memory::load(&project_root)?;
-    let system_prompt =
-        inference::build_system_prompt(&config.system_prompt, &semantic_memory, &config.agents_dir);
+    // Build agent (tools, MCP, system prompt) and session
+    let agent = Arc::new(KodaAgent::new(&config, project_root.clone()).await?);
+    let mut session = KodaSession::new(
+        session_id.clone(),
+        agent.clone(),
+        db,
+        &config,
+        ApprovalMode::Normal,
+    );
 
     // REPL with smart completions
-    // Initialize approval mode and user settings
     let shared_mode = approval::new_shared_mode(ApprovalMode::Normal);
-    let mut settings = Settings::load();
 
     let mut helper = KodaHelper::new(project_root.clone(), shared_mode.clone());
     {
@@ -136,7 +129,6 @@ pub async fn run(
     // Channel for approval responses from CLI → engine
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<koda_core::engine::EngineCommand>(32);
     let cli_sink = crate::sink::CliSink::new(cmd_tx);
-    let cancel_token = tokio_util::sync::CancellationToken::new();
 
     loop {
         let input = if let Some(cmd) = pending_command.take() {
@@ -257,7 +249,7 @@ pub async fn run(
                     continue;
                 }
                 ReplAction::ShowCost => {
-                    match db.session_token_usage(&session_id).await {
+                    match session.db.session_token_usage(&session.id).await {
                         Ok(u) => {
                             let total = u.prompt_tokens
                                 + u.completion_tokens
@@ -300,7 +292,7 @@ pub async fn run(
                     continue;
                 }
                 ReplAction::ListSessions => {
-                    match db.list_sessions(10, &project_root).await {
+                    match session.db.list_sessions(10, &project_root).await {
                         Ok(sessions) => {
                             println!();
                             println!("  \x1b[1m\u{1f43b} Recent Sessions\x1b[0m");
@@ -309,7 +301,7 @@ pub async fn run(
                                 println!("  \x1b[90mNo sessions found.\x1b[0m");
                             } else {
                                 for s in &sessions {
-                                    let marker = if s.id == session_id {
+                                    let marker = if s.id == session.id {
                                         " \x1b[32m← current\x1b[0m"
                                     } else {
                                         ""
@@ -334,11 +326,11 @@ pub async fn run(
                     continue;
                 }
                 ReplAction::DeleteSession(ref id) => {
-                    if id == &session_id {
+                    if id == &session.id {
                         println!("  \x1b[31mCannot delete the current session.\x1b[0m");
                     } else {
                         // Match by prefix
-                        match db.list_sessions(100, &project_root).await {
+                        match session.db.list_sessions(100, &project_root).await {
                             Ok(sessions) => {
                                 let matches: Vec<_> =
                                     sessions.iter().filter(|s| s.id.starts_with(id)).collect();
@@ -348,7 +340,7 @@ pub async fn run(
                                     ),
                                     1 => {
                                         let full_id = &matches[0].id;
-                                        match db.delete_session(full_id).await {
+                                        match session.db.delete_session(full_id).await {
                                             Ok(true) => println!(
                                                 "  \x1b[32m\u{2713}\x1b[0m Deleted session {}",
                                                 &full_id[..8]
@@ -375,11 +367,11 @@ pub async fn run(
                     continue;
                 }
                 ReplAction::Compact => {
-                    handle_compact(&db, &session_id, &config, &provider, false).await;
+                    handle_compact(&session.db, &session.id, &config, &provider, false).await;
                     continue;
                 }
                 ReplAction::McpCommand(ref args) => {
-                    handle_mcp_command(args, &mcp_registry, &project_root).await;
+                    handle_mcp_command(args, &agent.mcp_registry, &project_root).await;
                     continue;
                 }
                 ReplAction::SetTrust(mode_name) => {
@@ -431,15 +423,17 @@ pub async fn run(
                 processed.prompt.clone()
             };
 
-        db.insert_message(
-            &session_id,
-            &Role::User,
-            Some(&user_message),
-            None,
-            None,
-            None,
-        )
-        .await?;
+        session
+            .db
+            .insert_message(
+                &session.id,
+                &Role::User,
+                Some(&user_message),
+                None,
+                None,
+                None,
+            )
+            .await?;
 
         // Pass images to inference (they're not stored in DB, only used in-flight)
         let pending_images = if processed.images.is_empty() {
@@ -448,35 +442,27 @@ pub async fn run(
             Some(processed.images)
         };
 
-        // Run the inference loop
-        let prov = provider.read().await;
-        let current_mode = approval::read_mode(&shared_mode);
-        inference::inference_loop(
-            &project_root,
-            &config,
-            &db,
-            &session_id,
-            &system_prompt,
-            prov.as_ref(),
-            &tools,
-            &tool_defs,
-            pending_images,
-            current_mode,
-            &mut settings,
-            &cli_sink,
-            cancel_token.clone(),
-            &mut cmd_rx,
-            &crate::app::cli_loop_continue_prompt,
-        )
-        .await?;
+        // Sync session state from REPL changes (model/provider switching)
+        session.mode = approval::read_mode(&shared_mode);
+        session.update_provider(&config);
+        session
+            .run_turn(
+                &config,
+                pending_images,
+                &cli_sink,
+                &mut cmd_rx,
+                &crate::app::cli_loop_continue_prompt,
+            )
+            .await?;
 
         // Auto-compact when context window gets crowded
         if config.auto_compact_threshold > 0 {
             let ctx_pct = koda_core::context::percentage();
             if ctx_pct >= config.auto_compact_threshold {
                 // Fix 5: Defer compaction if tool calls are still pending
-                let pending = db
-                    .has_pending_tool_calls(&session_id)
+                let pending = session
+                    .db
+                    .has_pending_tool_calls(&session.id)
                     .await
                     .unwrap_or(false);
                 if pending {
@@ -493,7 +479,7 @@ pub async fn run(
                     println!(
                         "  \x1b[36m\u{1f43b} Context at {ctx_pct}% — auto-compacting...\x1b[0m"
                     );
-                    handle_compact(&db, &session_id, &config, &provider, true).await;
+                    handle_compact(&session.db, &session.id, &config, &provider, true).await;
                 }
             }
         }
@@ -506,7 +492,7 @@ pub async fn run(
 
     // Shut down MCP servers
     {
-        let mut mcp = mcp_registry.write().await;
+        let mut mcp = agent.mcp_registry.write().await;
         mcp.shutdown();
     }
 
@@ -524,17 +510,12 @@ pub async fn run_headless(
     prompt: String,
     output_format: &str,
 ) -> Result<i32> {
-    let provider: Arc<RwLock<Box<dyn LlmProvider>>> =
-        Arc::new(RwLock::new(create_provider(&config)));
+    // Build agent (no MCP in headless for speed) and session
+    let agent = Arc::new(KodaAgent::new(&config, project_root.clone()).await?);
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<koda_core::engine::EngineCommand>(32);
+    let mut session = KodaSession::new(session_id, agent, db, &config, ApprovalMode::Yolo);
 
-    let tools = koda_core::tools::ToolRegistry::new(project_root.clone());
-    let tool_defs = tools.get_definitions(&config.allowed_tools);
-
-    let semantic_memory = memory::load(&project_root)?;
-    let system_prompt =
-        inference::build_system_prompt(&config.system_prompt, &semantic_memory, &config.agents_dir);
-
-    // Process @file references and images (same as interactive mode)
+    // Process @file references and images
     let processed = input::process_input(&prompt, &project_root);
     let user_message = if let Some(context) = input::format_context_files(&processed.context_files)
     {
@@ -549,50 +530,40 @@ pub async fn run_headless(
         Some(processed.images)
     };
 
-    db.insert_message(
-        &session_id,
-        &Role::User,
-        Some(&user_message),
-        None,
-        None,
-        None,
-    )
-    .await?;
+    session
+        .db
+        .insert_message(
+            &session.id,
+            &Role::User,
+            Some(&user_message),
+            None,
+            None,
+            None,
+        )
+        .await?;
 
-    // Headless mode: use Yolo (no confirmation prompts)
-    let mut settings = Settings::load();
-
-    // Run inference (tools work, streaming prints to stdout)
-    let prov = provider.read().await;
-    let result = inference::inference_loop(
-        &project_root,
-        &config,
-        &db,
-        &session_id,
-        &system_prompt,
-        prov.as_ref(),
-        &tools,
-        &tool_defs,
-        pending_images,
-        ApprovalMode::Yolo,
-        &mut settings,
-        &crate::sink::CliSink::new(tokio::sync::mpsc::channel(32).0),
-        tokio_util::sync::CancellationToken::new(),
-        &mut tokio::sync::mpsc::channel(1).1,
-        &crate::app::cli_loop_continue_prompt,
-    )
-    .await;
+    let cli_sink = crate::sink::CliSink::new(cmd_tx);
+    let result = session
+        .run_turn(
+            &config,
+            pending_images,
+            &cli_sink,
+            &mut cmd_rx,
+            &crate::app::cli_loop_continue_prompt,
+        )
+        .await;
 
     // For JSON output, wrap the last assistant response
     if output_format == "json" {
-        let last_response = db
-            .last_assistant_message(&session_id)
+        let last_response = session
+            .db
+            .last_assistant_message(&session.id)
             .await
             .unwrap_or_default();
         let json = serde_json::json!({
             "success": result.is_ok(),
             "response": last_response,
-            "session_id": session_id,
+            "session_id": session.id,
             "model": config.model,
         });
         println!("{}", serde_json::to_string_pretty(&json)?);

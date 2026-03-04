@@ -6,10 +6,11 @@
 
 use crate::agent::KodaAgent;
 use crate::approval::{ApprovalMode, Settings};
+use crate::config::KodaConfig;
 use crate::db::Database;
 use crate::engine::{EngineCommand, EngineSink};
 use crate::loop_guard;
-use crate::providers::{ImageData, LlmProvider};
+use crate::providers::{self, ImageData, LlmProvider};
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -31,9 +32,15 @@ pub struct KodaSession {
 }
 
 impl KodaSession {
-    /// Create a new session from an agent and database.
-    pub fn new(id: String, agent: Arc<KodaAgent>, db: Database, mode: ApprovalMode) -> Self {
-        let provider = agent.create_provider();
+    /// Create a new session from an agent, config, and database.
+    pub fn new(
+        id: String,
+        agent: Arc<KodaAgent>,
+        db: Database,
+        config: &KodaConfig,
+        mode: ApprovalMode,
+    ) -> Self {
+        let provider = providers::create_provider(config);
         let settings = Settings::load();
         Self {
             id,
@@ -51,6 +58,7 @@ impl KodaSession {
     /// This wraps `inference::inference_loop()` with all the session state.
     pub async fn run_turn(
         &mut self,
+        config: &KodaConfig,
         pending_images: Option<Vec<ImageData>>,
         sink: &dyn EngineSink,
         cmd_rx: &mut mpsc::Receiver<EngineCommand>,
@@ -58,7 +66,7 @@ impl KodaSession {
     ) -> Result<()> {
         crate::inference::inference_loop(
             &self.agent.project_root,
-            &self.agent.config,
+            config,
             &self.db,
             &self.id,
             &self.agent.system_prompt,
@@ -74,5 +82,10 @@ impl KodaSession {
             loop_continue_prompt,
         )
         .await
+    }
+
+    /// Replace the provider (e.g., after switching models or providers).
+    pub fn update_provider(&mut self, config: &KodaConfig) {
+        self.provider = providers::create_provider(config);
     }
 }
