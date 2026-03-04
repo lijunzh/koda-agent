@@ -6,6 +6,7 @@
 //!
 //! See `DESIGN.md` in the repository root for the full architectural rationale.
 
+pub mod agent;
 pub mod approval;
 pub mod config;
 pub mod context;
@@ -19,5 +20,6 @@ pub mod memory;
 pub mod preview;
 pub mod providers;
 pub mod runtime_env;
+pub mod session;
 pub mod tools;
 pub mod version;
