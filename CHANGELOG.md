@@ -4,6 +4,36 @@ All notable changes to Koda are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.5] - 2026-03-04
+
+**Final release.** `koda-agent` is now deprecated.
+
+Koda has been refactored into two new crates in a separate repository:
+- **`koda-core`** — engine library ([crates.io](https://crates.io/crates/koda-core))
+- **`koda-cli`** — CLI binary ([crates.io](https://crates.io/crates/koda-cli))
+
+Development continues at [github.com/lijunzh/koda](https://github.com/lijunzh/koda).
+
+### Changed
+- Startup deprecation banner directing users to `cargo install koda-cli`
+- Version checker now also checks for `koda-cli` releases and nudges users to migrate
+- Crate metadata updated: description, repository, and keywords reflect deprecated status
+- README rewritten as deprecation notice with migration instructions
+- GitHub issue templates redirect to [lijunzh/koda](https://github.com/lijunzh/koda/issues)
+- Homebrew tap update removed from release pipeline (ownership transfers to `koda` repo)
+
+## [0.1.4] - 2026-03-03
+
+✨ **Highlights:** Engine extraction · EngineEvent/EngineCommand protocol · EngineSink trait
+
+### Architecture
+- **EngineEvent** (18 variants) + **EngineCommand** (5 variants): JSON serde-ready protocol types defining the engine ↔ client boundary
+- **EngineSink** trait with CliSink (terminal) and TestSink (testing)
+- `inference.rs` fully decoupled from display/markdown/confirm modules
+- Approval flow routed through EngineSink
+- `<think>` tag parsing moved to provider layer (ThinkTagFilter)
+- Markdown streaming wired through CliSink
+
 ## [0.1.3] - 2026-03-03
 
 This release introduces major leaps in model interoperability, significantly reduces token overhead, and lays the groundwork for external tool integration via the Model Context Protocol. It focuses on giving developers more flexibility with local providers and maintaining high performance over long sessions.

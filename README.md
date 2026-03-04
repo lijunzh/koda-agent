@@ -1,134 +1,27 @@
-# Koda 🐻
+# koda-agent (Deprecated)
 
-A high-performance AI coding agent built in Rust.
+> **⚠️ This crate has been deprecated.**
+> Koda has been refactored into two new crates for better modularity:
+>
+> - **[`koda-core`](https://crates.io/crates/koda-core)** — engine library
+> - **[`koda-cli`](https://crates.io/crates/koda-cli)** — CLI binary (installs the `koda` command)
+>
+> Development continues at [github.com/lijunzh/koda](https://github.com/lijunzh/koda).
 
-Single compiled binary. Multi-provider LLM support. Zero runtime dependencies.
-
-## Philosophy
-
-**Koda is a personal coding agent.** It's built for a single developer at a keyboard,
-not for enterprise teams or platform integrations. This focus drives every design decision:
-
-- **Single binary, zero runtime deps.** `cargo install` and you're done. No Node.js,
-  no Python, no Docker. Works offline with local models (LM Studio) or online with
-  cloud providers.
-- **Built-in tools for the core coding loop.** File ops, search, shell, web fetch,
-  memory, and agents are compiled in — always available, zero latency, zero config.
-- **MCP for everything else.** Need GitHub API, databases, Slack? Connect external
-  MCP servers via `.mcp.json`. Koda stays lean; the ecosystem handles the long tail.
-- **Ask Koda what it can do.** Just ask — "what can you do?" or "what tools do you
-  have?" Koda's capabilities are embedded in its system prompt, so it can always
-  describe its own tools, commands, and features accurately.
-
-## Install
+## Migrating
 
 ```bash
-# From crates.io
-cargo install koda-agent
-
-# From source
-git clone https://github.com/lijunzh/koda.git
-cd koda && cargo build --release
+cargo install koda-cli
 ```
 
-On first run, an onboarding wizard guides you through provider and API key setup.
+This installs the same `koda` binary, replacing the one from `koda-agent`.
+All your existing config (`~/.config/koda/`) and project data (`.koda.db`) carry over — no migration needed.
 
-## Quick Start
+## History
 
-```bash
-koda                              # Interactive REPL (auto-detects LM Studio)
-koda --provider anthropic         # Use a cloud provider
-koda -p "fix the bug in auth.rs"  # Headless one-shot
-echo "explain this" | koda        # Piped input
-```
+`koda-agent` was the original single-crate implementation of Koda, a high-performance AI coding agent built in Rust. Versions v0.1.0 through v0.1.4 contained the full agent. v0.1.5 is the final release, adding a deprecation notice pointing users to `koda-cli`.
 
-## What's Inside
-
-- **17 built-in tools** — file ops, search, shell, web fetch, memory, agents, task tracking, and AST analysis
-- **MCP support** — connect to any [MCP server](https://modelcontextprotocol.io) via `.mcp.json` (same format as Claude Code / Cursor)
-- **6 LLM providers** — LM Studio, OpenAI, Anthropic, Gemini, Groq, Grok
-- **5 embedded agents** — default, code reviewer, security auditor, test writer, release engineer
-
-### 🌳 AST Code Analysis
-Koda natively understands the structure of your codebase using embedded `tree-sitter` parsers.
-- **Built-in Languages:** Rust, Python, JavaScript, and TypeScript. Koda can instantly extract functions, classes, and generate call graphs (who calls what) without guessing.
-- **Extending with MCP:** To keep Koda's binary blazingly fast and lightweight, we restrict built-in parsers to the "Big 4" languages. Need AST support for Go, C++, or Java? Simply connect a community Tree-sitter MCP server via your `.mcp.json`!
-
-### 🏗️ Architecture
-Koda is evolving toward a **server-backed platform** (see [DESIGN.md](DESIGN.md)):
-- **Engine** — pure Rust library with zero IO, communicates via `EngineEvent`/`EngineCommand` enums
-- **CLI Client** — the default interactive experience (rustyline REPL)
-- **ACP Server** — planned for v0.2.0, enabling VS Code, desktop apps, and Zed to connect
-- **Personal AI Platform** — coding is the starting point; email, calendar, docs, and knowledge management are on the roadmap
-- **Approval modes** — plan (read-only) / normal (smart confirm) / yolo (auto-approve) via `/trust`
-- **Diff preview** — see exactly what changes before approving Edit, Write, Delete
-- **Loop detection** — catches repeated tool calls with configurable iteration caps
-- **Parallel execution** — concurrent tool calls and sub-agent orchestration
-- **Smart context** — auto-compact (configurable threshold), sliding window, prompt caching (Anthropic)
-- **Extended thinking** — structured thinking block display with configurable budgets
-- **Image analysis** — `@image.png` or drag-and-drop for multi-modal input
-- **Git integration** — `/diff` review, commit message generation
-- **Headless mode** — `koda -p "prompt"` with JSON output for CI/CD
-- **Persistent memory** — project (`MEMORY.md`) and global (`~/.config/koda/memory.md`)
-
-## REPL Commands
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Command palette (select & execute) |
-| `/agent` | List available sub-agents |
-| `/compact` | Summarize conversation to reclaim context |
-| `/cost` | Show token usage for this session |
-| `/diff` | Show/review uncommitted changes |
-| `/mcp` | MCP servers: status, add, remove, restart |
-| `/memory` | View/save project & global memory |
-| `/model` | Pick a model (↑↓ arrow keys) |
-| `/provider` | Switch LLM provider |
-| `/sessions` | List, resume, or delete sessions |
-| `/trust` | Switch approval mode (plan/normal/yolo) |
-| `/exit` | Quit Koda |
-
-**Tips:** `@file` to attach context · `Shift+Tab` to cycle trust mode · `Esc` to clear input
-
-## MCP (Model Context Protocol)
-
-Koda connects to external [MCP servers](https://modelcontextprotocol.io) for additional tools.
-Create a `.mcp.json` in your project root (same format as Claude Code / Cursor):
-
-```json
-{
-  "mcpServers": {
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_TOKEN": "$GITHUB_TOKEN" }
-    }
-  }
-}
-```
-
-Servers auto-connect on startup. MCP tools appear alongside built-in tools with
-namespaced names (e.g. `github.create_issue`). Manage at runtime with `/mcp`.
-
-User-level servers go in `~/.config/koda/mcp.json` (merged, project overrides).
-
-## Documentation
-
-- **[DESIGN.md](DESIGN.md)** — Architecture, design principles, technical stack
-- **[CHANGELOG.md](CHANGELOG.md)** — Release history
-- **[GitHub Issues](https://github.com/lijunzh/koda/issues)** — Roadmap and feature backlog
-
-## Development
-
-```bash
-cargo test          # Run all tests
-cargo clippy        # Lint
-cargo run           # Run locally
-```
+For the full changelog, see [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

@@ -95,6 +95,20 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Deprecation notice — this crate is superseded by koda-cli
+    eprintln!();
+    eprintln!(
+        "  \x1b[33m\u{26a0}  koda-agent is deprecated (final release: v{}).\x1b[0m",
+        env!("CARGO_PKG_VERSION")
+    );
+    eprintln!("  Koda has moved to two new crates:");
+    eprintln!("    \x1b[36mkoda-core\x1b[0m  \u{2014} engine library");
+    eprintln!("    \x1b[36mkoda-cli\x1b[0m   \u{2014} CLI binary");
+    eprintln!();
+    eprintln!("  Upgrade:  \x1b[1mcargo install koda-cli\x1b[0m");
+    eprintln!("  Repo:     \x1b[4mhttps://github.com/lijunzh/koda\x1b[0m");
+    eprintln!();
+
     // Install Ctrl+C handler for graceful interrupts
     interrupt::install_handler();
 

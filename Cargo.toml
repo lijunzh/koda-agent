@@ -1,13 +1,13 @@
 [package]
 name = "koda-agent"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
-description = "A high-performance AI coding agent built in Rust"
+description = "DEPRECATED — use `cargo install koda-cli` instead. See https://github.com/lijunzh/koda"
 license = "MIT"
-repository = "https://github.com/lijunzh/koda"
+repository = "https://github.com/lijunzh/koda-agent"
 homepage = "https://github.com/lijunzh/koda"
 readme = "README.md"
-keywords = ["ai", "coding-agent", "llm", "cli", "rust"]
+keywords = ["deprecated", "ai", "coding-agent", "llm", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Lijun Zhu"]
 
