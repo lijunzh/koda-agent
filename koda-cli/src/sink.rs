@@ -1,49 +1,56 @@
-//! Engine output sink trait and CLI adapter.
+//! CLI sink — renders EngineEvents to the terminal.
 //!
-//! The `EngineSink` trait abstracts how the engine delivers events to clients.
-//! `CliSink` is the default implementation that renders events to the terminal
-//! using the existing display/markdown infrastructure — preserving the exact
-//! current user experience.
+//! This reproduces the exact current terminal output by delegating
+//! to `display::` and `markdown::`. It's the default sink used in
+//! interactive and headless modes.
 
-use super::event::{ApprovalDecision, EngineEvent};
-
-/// Trait for consuming engine events.
-///
-/// Implementors decide how to render or transport events:
-/// - `CliSink`: renders to terminal via `display::` and `markdown::`
-/// - Future `AcpSink`: serializes over WebSocket
-/// - Future `TestSink`: collects events for assertions
-pub trait EngineSink: Send + Sync {
-    /// Emit an engine event to the client.
-    fn emit(&self, event: EngineEvent);
-
-    /// Request approval from the user for a tool action.
-    ///
-    /// This is a blocking request/response: the engine pauses until the
-    /// client decides. In CLI mode, this shows an interactive select widget.
-    /// In server mode, this sends a WebSocket message and awaits the response.
-    fn request_approval(
-        &self,
-        tool_name: &str,
-        detail: &str,
-        preview: Option<&str>,
-        whitelist_hint: Option<&str>,
-    ) -> ApprovalDecision;
-}
+use koda_core::engine::{ApprovalDecision, EngineEvent, EngineSink};
 
 /// The CLI sink that renders EngineEvents to the terminal.
-///
-/// This reproduces the exact current terminal output by delegating
-/// to `display::` and `println!()`. It's the default sink used in
-/// interactive and headless modes.
 pub struct CliSink {
     md: std::sync::Mutex<crate::markdown::MarkdownStreamer>,
+    spinner: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl CliSink {
     pub fn new() -> Self {
         Self {
             md: std::sync::Mutex::new(crate::markdown::MarkdownStreamer::new()),
+            spinner: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn start_spinner(&self, message: String) {
+        // Stop any existing spinner first
+        self.stop_spinner();
+
+        let handle = tokio::spawn(async move {
+            let frames = ["⠋", "⠙", "⠸", "⠰", "⠠", "⠆", "⠎", "⠇"];
+            let start = std::time::Instant::now();
+            let mut i = 0usize;
+            loop {
+                let frame = frames[i % frames.len()];
+                let elapsed = start.elapsed().as_secs();
+                let display = if elapsed > 0 {
+                    format!("{message} ({elapsed}s)")
+                } else {
+                    message.clone()
+                };
+                eprint!("\r\x1b[36m{frame}\x1b[0m {display}\x1b[K");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+                i += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+            }
+        });
+
+        *self.spinner.lock().unwrap() = Some(handle);
+    }
+
+    fn stop_spinner(&self) {
+        if let Some(handle) = self.spinner.lock().unwrap().take() {
+            handle.abort();
+            eprint!("\r\x1b[K");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
         }
     }
 }
@@ -79,7 +86,7 @@ impl EngineSink for CliSink {
                 args,
                 is_sub_agent,
             } => {
-                let tc = crate::providers::ToolCall {
+                let tc = koda_core::providers::ToolCall {
                     id: String::new(),
                     function_name: name,
                     arguments: serde_json::to_string(&args).unwrap_or_default(),
@@ -131,13 +138,14 @@ impl EngineSink for CliSink {
                 } else {
                     (total_chars / 4) as i64
                 };
-                let time_str =
-                    crate::inference::format_duration(std::time::Duration::from_millis(elapsed_ms));
+                let time_str = koda_core::inference::format_duration(
+                    std::time::Duration::from_millis(elapsed_ms),
+                );
                 let mut parts = Vec::new();
                 if prompt_tokens > 0 {
                     parts.push(format!(
                         "in: {}",
-                        crate::inference::format_token_count(prompt_tokens)
+                        koda_core::inference::format_token_count(prompt_tokens)
                     ));
                 }
                 if display_tokens > 0 {
@@ -150,13 +158,13 @@ impl EngineSink for CliSink {
                 if cache_read_tokens > 0 {
                     parts.push(format!(
                         "cache: {} read",
-                        crate::inference::format_token_count(cache_read_tokens)
+                        koda_core::inference::format_token_count(cache_read_tokens)
                     ));
                 }
                 if thinking_tokens > 0 {
                     parts.push(format!(
                         "thinking: {}",
-                        crate::inference::format_token_count(thinking_tokens)
+                        koda_core::inference::format_token_count(thinking_tokens)
                     ));
                 }
                 let footer = parts.join(" \u{00b7} ");
@@ -167,8 +175,11 @@ impl EngineSink for CliSink {
                 };
                 println!("\n\n\x1b[90m{footer}{ctx_part}\x1b[0m\n");
             }
-            EngineEvent::SpinnerStart { .. } | EngineEvent::SpinnerStop => {
-                // Spinner is managed by SimpleSpinner in inference.rs directly.
+            EngineEvent::SpinnerStart { message } => {
+                self.start_spinner(message);
+            }
+            EngineEvent::SpinnerStop => {
+                self.stop_spinner();
             }
             EngineEvent::Info { message } => {
                 println!("  \x1b[36m{message}\x1b[0m");
@@ -198,86 +209,5 @@ impl EngineSink for CliSink {
             }
             Confirmation::AlwaysAllow => ApprovalDecision::AlwaysAllow,
         }
-    }
-}
-/// A sink that collects events into a Vec for testing.
-#[allow(dead_code)]
-#[derive(Debug, Default)]
-pub struct TestSink {
-    events: std::sync::Mutex<Vec<EngineEvent>>,
-}
-
-#[allow(dead_code)]
-impl TestSink {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Get all collected events.
-    pub fn events(&self) -> Vec<EngineEvent> {
-        self.events.lock().unwrap().clone()
-    }
-
-    /// Get the count of collected events.
-    pub fn len(&self) -> usize {
-        self.events.lock().unwrap().len()
-    }
-
-    /// Check if no events were collected.
-    pub fn is_empty(&self) -> bool {
-        self.events.lock().unwrap().is_empty()
-    }
-}
-
-impl EngineSink for TestSink {
-    fn emit(&self, event: EngineEvent) {
-        self.events.lock().unwrap().push(event);
-    }
-
-    fn request_approval(
-        &self,
-        _tool_name: &str,
-        _detail: &str,
-        _preview: Option<&str>,
-        _whitelist_hint: Option<&str>,
-    ) -> ApprovalDecision {
-        ApprovalDecision::Approve
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sink_collects_events() {
-        let sink = TestSink::new();
-        assert!(sink.is_empty());
-
-        sink.emit(EngineEvent::ResponseStart);
-        sink.emit(EngineEvent::TextDelta {
-            text: "hello".into(),
-        });
-        sink.emit(EngineEvent::TextDone);
-
-        assert_eq!(sink.len(), 3);
-        let events = sink.events();
-        assert!(matches!(events[0], EngineEvent::ResponseStart));
-        assert!(matches!(&events[1], EngineEvent::TextDelta { text } if text == "hello"));
-        assert!(matches!(events[2], EngineEvent::TextDone));
-    }
-
-    #[test]
-    fn test_sink_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<TestSink>();
-    }
-
-    #[test]
-    fn test_trait_object_works() {
-        let sink: Box<dyn EngineSink> = Box::new(TestSink::new());
-        sink.emit(EngineEvent::Info {
-            message: "test".into(),
-        });
     }
 }

@@ -5,15 +5,13 @@
 
 use crate::approval::{self, ApprovalMode, Settings, ToolApproval};
 use crate::config::KodaConfig;
-use crate::confirm;
 use crate::db::{Database, Role};
 use crate::engine::{ApprovalDecision, EngineEvent};
-use crate::interrupt;
 use crate::loop_guard::{self, LoopDetector};
 use crate::memory;
 use crate::preview;
 use crate::providers::{ChatMessage, ImageData, LlmProvider, StreamChunk, ToolCall};
-use crate::tools::ToolRegistry;
+use crate::tools::{self, ToolRegistry};
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -34,6 +32,9 @@ pub async fn inference_loop(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
+    is_interrupted: &dyn Fn() -> bool,
+    clear_interrupt: &dyn Fn(),
+    loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     // When native thinking is active, drop ShareReasoning from tool list
     let has_native_thinking = config.model_settings.thinking_budget.is_some()
@@ -67,7 +68,11 @@ pub async fn inference_loop(
 
     loop {
         if iteration >= hard_cap {
-            let extra = loop_guard::ask_continue_or_stop(hard_cap, &loop_detector.recent_names());
+            let extra = loop_guard::ask_continue_or_stop(
+                hard_cap,
+                &loop_detector.recent_names(),
+                loop_continue_prompt,
+            );
             if extra == 0 {
                 break Ok(());
             }
@@ -128,7 +133,9 @@ pub async fn inference_loop(
         crate::context::update(context_used, config.max_context_tokens);
 
         // Stream the response
-        let mut spinner = SimpleSpinner::new("\u{1f36f} Thinking...");
+        sink.emit(EngineEvent::SpinnerStart {
+            message: "\u{1f36f} Thinking...".into(),
+        });
 
         let mut rx = provider
             .chat_stream(&messages, tool_defs, &config.model_settings)
@@ -152,7 +159,7 @@ pub async fn inference_loop(
                 _ = async {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        if interrupt::is_interrupted() { break; }
+                        if is_interrupted() { break; }
                     }
                 } => {
                     // Ctrl+C during receive
@@ -161,13 +168,13 @@ pub async fn inference_loop(
                 }
             };
 
-            if interrupted || interrupt::is_interrupted() {
-                spinner.finish_and_clear();
+            if interrupted || is_interrupted() {
+                sink.emit(EngineEvent::SpinnerStop);
                 if !full_text.is_empty() {
                     sink.emit(EngineEvent::TextDone);
                 }
                 println!("\n\x1b[33m\u{26a0} Interrupted\x1b[0m");
-                interrupt::clear();
+                clear_interrupt();
                 if !full_text.is_empty() {
                     db.insert_message(
                         session_id,
@@ -191,7 +198,7 @@ pub async fn inference_loop(
                     if first_token {
                         // Flush any buffered thinking before showing response
                         if !native_think_buf.is_empty() {
-                            spinner.finish_and_clear();
+                            sink.emit(EngineEvent::SpinnerStop);
                             sink.emit(EngineEvent::ThinkingStart);
                             sink.emit(EngineEvent::ThinkingDelta {
                                 text: native_think_buf.clone(),
@@ -199,7 +206,7 @@ pub async fn inference_loop(
                             native_think_buf.clear();
                             thinking_banner_shown = true;
                         }
-                        spinner.finish_and_clear();
+                        sink.emit(EngineEvent::SpinnerStop);
                         first_token = false;
                     }
 
@@ -224,7 +231,7 @@ pub async fn inference_loop(
                 StreamChunk::ThinkingDelta(delta) => {
                     // Buffer thinking — emit as a block when text or tool calls start
                     if !thinking_banner_shown {
-                        spinner.finish_and_clear();
+                        sink.emit(EngineEvent::SpinnerStop);
                         sink.emit(EngineEvent::ThinkingStart);
                         thinking_banner_shown = true;
                     }
@@ -235,20 +242,20 @@ pub async fn inference_loop(
                 }
                 StreamChunk::ToolCalls(tcs) => {
                     if !native_think_buf.is_empty() {
-                        spinner.finish_and_clear();
+                        sink.emit(EngineEvent::SpinnerStop);
                         sink.emit(EngineEvent::ThinkingStart);
                         sink.emit(EngineEvent::ThinkingDelta {
                             text: native_think_buf.clone(),
                         });
                         native_think_buf.clear();
                     }
-                    spinner.finish_and_clear();
+                    sink.emit(EngineEvent::SpinnerStop);
                     tool_calls = tcs;
                 }
                 StreamChunk::Done(u) => {
                     // Flush any remaining native thinking (thinking-only turns)
                     if !native_think_buf.is_empty() {
-                        spinner.finish_and_clear();
+                        sink.emit(EngineEvent::SpinnerStop);
                         sink.emit(EngineEvent::ThinkingStart);
                         sink.emit(EngineEvent::ThinkingDelta {
                             text: native_think_buf.clone(),
@@ -269,7 +276,7 @@ pub async fn inference_loop(
         // (This is handled inline during streaming above)
 
         if first_token {
-            spinner.finish_and_clear();
+            sink.emit(EngineEvent::SpinnerStop);
         }
 
         // Log the assistant response
@@ -381,6 +388,9 @@ pub async fn inference_loop(
                 mode,
                 &settings.approval.allowed_commands,
                 sink,
+                is_interrupted,
+                clear_interrupt,
+                loop_continue_prompt,
             )
             .await?;
         } else {
@@ -394,6 +404,9 @@ pub async fn inference_loop(
                 mode,
                 settings,
                 sink,
+                is_interrupted,
+                clear_interrupt,
+                loop_continue_prompt,
             )
             .await?;
         }
@@ -438,6 +451,9 @@ async fn execute_one_tool(
     mode: ApprovalMode,
     allowed_commands: &[String],
     sink: &dyn crate::engine::EngineSink,
+    is_interrupted: &dyn Fn() -> bool,
+    clear_interrupt: &dyn Fn(),
+    loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> (String, String) {
     let result = if tc.function_name == "InvokeAgent" {
         // Sub-agents inherit the parent's approval mode.
@@ -453,6 +469,9 @@ async fn execute_one_tool(
             mode,
             &mut sub_settings,
             sink,
+            is_interrupted,
+            clear_interrupt,
+            loop_continue_prompt,
         )
         .await
         {
@@ -495,6 +514,9 @@ async fn execute_tools_parallel(
     mode: ApprovalMode,
     allowed_commands: &[String],
     sink: &dyn crate::engine::EngineSink,
+    is_interrupted: &dyn Fn() -> bool,
+    clear_interrupt: &dyn Fn(),
+    loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     // Print all tool call banners upfront
     for tc in tool_calls {
@@ -523,6 +545,9 @@ async fn execute_tools_parallel(
                 mode,
                 allowed_commands,
                 sink,
+                is_interrupted,
+                clear_interrupt,
+                loop_continue_prompt,
             )
         })
         .collect();
@@ -560,12 +585,15 @@ async fn execute_tools_sequential(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
+    is_interrupted: &dyn Fn() -> bool,
+    clear_interrupt: &dyn Fn(),
+    loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     for tc in tool_calls {
         // Check for interrupt before each tool
-        if interrupt::is_interrupted() {
+        if is_interrupted() {
             println!("\n  \x1b[33m\u{26a0} Interrupted\x1b[0m");
-            interrupt::clear();
+            clear_interrupt();
             return Ok(());
         }
 
@@ -593,7 +621,7 @@ async fn execute_tools_sequential(
             }
             ToolApproval::Blocked => {
                 // Plan mode: show what would happen, don't execute
-                let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                let detail = tools::describe_action(&tc.function_name, &parsed_args);
                 let diff_preview =
                     preview::compute(&tc.function_name, &parsed_args, project_root).await;
                 println!("  \x1b[33m\u{1f4cb} Would execute: {detail}\x1b[0m");
@@ -614,7 +642,7 @@ async fn execute_tools_sequential(
                 continue;
             }
             ToolApproval::NeedsConfirmation => {
-                let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                let detail = tools::describe_action(&tc.function_name, &parsed_args);
                 let diff_preview =
                     preview::compute(&tc.function_name, &parsed_args, project_root).await;
 
@@ -694,6 +722,9 @@ async fn execute_tools_sequential(
             mode,
             &settings.approval.allowed_commands,
             sink,
+            is_interrupted,
+            clear_interrupt,
+            loop_continue_prompt,
         )
         .await;
         sink.emit(EngineEvent::ToolCallResult {
@@ -718,6 +749,7 @@ async fn execute_tools_sequential(
 // ── Sub-agent execution ───────────────────────────────────────
 
 /// Execute a sub-agent in its own isolated event loop.
+#[allow(clippy::too_many_arguments)]
 async fn execute_sub_agent(
     project_root: &Path,
     parent_config: &KodaConfig,
@@ -726,6 +758,9 @@ async fn execute_sub_agent(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
+    _is_interrupted: &dyn Fn() -> bool,
+    _clear_interrupt: &dyn Fn(),
+    _loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<String> {
     let args: serde_json::Value = serde_json::from_str(arguments)?;
     let agent_name = args["agent_name"]
@@ -755,7 +790,7 @@ async fn execute_sub_agent(
     db.insert_message(&sub_session, &Role::User, Some(prompt), None, None, None)
         .await?;
 
-    let provider = crate::app::create_provider(&sub_config);
+    let provider = crate::providers::create_provider(&sub_config);
     let tools = ToolRegistry::new(project_root.to_path_buf());
     let tool_defs = tools.get_definitions(&sub_config.allowed_tools);
     let semantic_memory = memory::load(project_root)?;
@@ -785,11 +820,13 @@ async fn execute_sub_agent(
             });
         }
 
-        let mut spinner = SimpleSpinner::new(&format!("  🦥 {agent_name} thinking..."));
+        sink.emit(EngineEvent::SpinnerStart {
+            message: format!("  🦥 {agent_name} thinking..."),
+        });
         let response = provider
             .chat(&messages, &tool_defs, &sub_config.model_settings)
             .await?;
-        spinner.finish_and_clear();
+        sink.emit(EngineEvent::SpinnerStop);
 
         let tool_calls_json = if response.tool_calls.is_empty() {
             None
@@ -836,12 +873,12 @@ async fn execute_sub_agent(
                     tools.execute(&tc.function_name, &tc.arguments).await.output
                 }
                 ToolApproval::Blocked => {
-                    let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                    let detail = tools::describe_action(&tc.function_name, &parsed_args);
                     println!("  \x1b[33m\u{1f4cb} Would execute: {detail}\x1b[0m");
                     "[plan mode] Action described but not executed.".to_string()
                 }
                 ToolApproval::NeedsConfirmation => {
-                    let detail = confirm::describe_action(&tc.function_name, &parsed_args);
+                    let detail = tools::describe_action(&tc.function_name, &parsed_args);
                     let diff_preview =
                         preview::compute(&tc.function_name, &parsed_args, project_root).await;
                     let whitelist_hint = if tc.function_name == "Bash" {
@@ -973,59 +1010,6 @@ pub fn format_duration(d: std::time::Duration) -> String {
         let mins = secs / 60;
         let remaining = secs % 60;
         format!("{mins}m {remaining}s")
-    }
-}
-
-/// Create a terminal spinner.
-/// A minimal spinner that uses `\r` to update in place.
-/// Immune to terminal resize events (no SIGWINCH handler).
-struct SimpleSpinner {
-    /// Shared message updated by the spinner updater task.
-    /// Accessed via Arc clone, not direct field read.
-    #[allow(dead_code)]
-    message: std::sync::Arc<std::sync::Mutex<String>>,
-    /// Handle to the background tick task.
-    handle: Option<tokio::task::JoinHandle<()>>,
-}
-
-impl SimpleSpinner {
-    fn new(message: &str) -> Self {
-        let msg = std::sync::Arc::new(std::sync::Mutex::new(message.to_string()));
-        let msg_clone = msg.clone();
-        let start = Instant::now();
-
-        // Single task handles both animation and elapsed time updates
-        let handle = tokio::spawn(async move {
-            let frames = ["⠋", "⠙", "⠸", "⠰", "⠠", "⠆", "⠎", "⠇"];
-            let mut i = 0usize;
-            loop {
-                let frame = frames[i % frames.len()];
-                let base = msg_clone.lock().unwrap().clone();
-                let elapsed = start.elapsed().as_secs();
-                let display = if elapsed > 0 {
-                    format!("{base} ({elapsed}s)")
-                } else {
-                    base
-                };
-                eprint!("\r\x1b[36m{frame}\x1b[0m {display}\x1b[K");
-                let _ = std::io::Write::flush(&mut std::io::stderr());
-                i += 1;
-                tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-            }
-        });
-
-        Self {
-            message: msg,
-            handle: Some(handle),
-        }
-    }
-
-    fn finish_and_clear(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            handle.abort();
-        }
-        eprint!("\r\x1b[K");
-        let _ = std::io::Write::flush(&mut std::io::stderr());
     }
 }
 
