@@ -1,6 +1,6 @@
 [package]
 name = "koda-agent"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 description = "A high-performance AI coding agent built in Rust"
 license = "MIT"

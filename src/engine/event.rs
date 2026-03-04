@@ -141,6 +141,8 @@ pub enum EngineEvent {
 // ── Client → Engine ──────────────────────────────────────────────────────
 
 /// Commands sent from the client to the engine.
+/// Not yet consumed outside the engine module — wired in v0.2.0 server mode.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineCommand {
@@ -170,6 +172,7 @@ pub enum EngineCommand {
 }
 
 /// An image attached to a user prompt.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageAttachment {
     /// Base64-encoded image data.
@@ -193,6 +196,8 @@ pub enum ApprovalDecision {
 }
 
 /// Slash commands that the client can send to the engine.
+/// Not yet consumed outside the engine module — wired in v0.2.0 server mode.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum SlashCommand {

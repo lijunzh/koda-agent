@@ -201,11 +201,13 @@ impl EngineSink for CliSink {
     }
 }
 /// A sink that collects events into a Vec for testing.
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct TestSink {
     events: std::sync::Mutex<Vec<EngineEvent>>,
 }
 
+#[allow(dead_code)]
 impl TestSink {
     pub fn new() -> Self {
         Self::default()
