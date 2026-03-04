@@ -1,7 +1,7 @@
 //! Ctrl+C interrupt handling for graceful cancellation.
 //!
-//! Provides a shared interrupt flag that's set on SIGINT and checked
-//! during streaming, tool execution, and confirmation prompts.
+//! Provides a double-tap force quit mechanism:
+//! first Ctrl+C sets a flag, second force-exits.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -9,6 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 
 /// Install the Ctrl+C handler. Call once at startup.
+///
+/// First Ctrl+C sets the flag (engine checks `CancellationToken`).
+/// Second Ctrl+C force-exits the process.
 pub fn install_handler() {
     let _ = ctrlc::set_handler(move || {
         if INTERRUPTED.load(Ordering::SeqCst) {
@@ -18,31 +21,4 @@ pub fn install_handler() {
         }
         INTERRUPTED.store(true, Ordering::SeqCst);
     });
-}
-
-/// Check if an interrupt has been requested.
-pub fn is_interrupted() -> bool {
-    INTERRUPTED.load(Ordering::SeqCst)
-}
-
-/// Clear the interrupt flag (call after handling the interrupt).
-pub fn clear() {
-    INTERRUPTED.store(false, Ordering::SeqCst);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_interrupt_flag() {
-        clear();
-        assert!(!is_interrupted());
-
-        INTERRUPTED.store(true, Ordering::SeqCst);
-        assert!(is_interrupted());
-
-        clear();
-        assert!(!is_interrupted());
-    }
 }

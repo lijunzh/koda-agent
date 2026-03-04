@@ -6,7 +6,7 @@
 use crate::approval::{self, ApprovalMode, Settings, ToolApproval};
 use crate::config::KodaConfig;
 use crate::db::{Database, Role};
-use crate::engine::{ApprovalDecision, EngineEvent};
+use crate::engine::{ApprovalDecision, EngineCommand, EngineEvent};
 use crate::loop_guard::{self, LoopDetector};
 use crate::memory;
 use crate::preview;
@@ -16,6 +16,8 @@ use crate::tools::{self, ToolRegistry};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::time::Instant;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 /// Run inference, executing tool calls until the LLM produces a text response.
 #[allow(clippy::too_many_arguments)]
@@ -32,8 +34,8 @@ pub async fn inference_loop(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
-    is_interrupted: &dyn Fn() -> bool,
-    clear_interrupt: &dyn Fn(),
+    cancel: CancellationToken,
+    cmd_rx: &mut mpsc::Receiver<EngineCommand>,
     loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     // When native thinking is active, drop ShareReasoning from tool list
@@ -159,7 +161,7 @@ pub async fn inference_loop(
                 _ = async {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        if is_interrupted() { break; }
+                        if cancel.is_cancelled() { break; }
                     }
                 } => {
                     // Ctrl+C during receive
@@ -168,13 +170,12 @@ pub async fn inference_loop(
                 }
             };
 
-            if interrupted || is_interrupted() {
+            if interrupted || cancel.is_cancelled() {
                 sink.emit(EngineEvent::SpinnerStop);
                 if !full_text.is_empty() {
                     sink.emit(EngineEvent::TextDone);
                 }
                 println!("\n\x1b[33m\u{26a0} Interrupted\x1b[0m");
-                clear_interrupt();
                 if !full_text.is_empty() {
                     db.insert_message(
                         session_id,
@@ -388,8 +389,7 @@ pub async fn inference_loop(
                 mode,
                 &settings.approval.allowed_commands,
                 sink,
-                is_interrupted,
-                clear_interrupt,
+                cancel.clone(),
                 loop_continue_prompt,
             )
             .await?;
@@ -404,8 +404,8 @@ pub async fn inference_loop(
                 mode,
                 settings,
                 sink,
-                is_interrupted,
-                clear_interrupt,
+                cancel.clone(),
+                cmd_rx,
                 loop_continue_prompt,
             )
             .await?;
@@ -451,8 +451,7 @@ async fn execute_one_tool(
     mode: ApprovalMode,
     allowed_commands: &[String],
     sink: &dyn crate::engine::EngineSink,
-    is_interrupted: &dyn Fn() -> bool,
-    clear_interrupt: &dyn Fn(),
+    cancel: CancellationToken,
     loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> (String, String) {
     let result = if tc.function_name == "InvokeAgent" {
@@ -469,8 +468,9 @@ async fn execute_one_tool(
             mode,
             &mut sub_settings,
             sink,
-            is_interrupted,
-            clear_interrupt,
+            cancel.clone(),
+            // Sub-agents get a fresh command channel (they auto-approve in all modes)
+            &mut mpsc::channel(1).1,
             loop_continue_prompt,
         )
         .await
@@ -514,8 +514,7 @@ async fn execute_tools_parallel(
     mode: ApprovalMode,
     allowed_commands: &[String],
     sink: &dyn crate::engine::EngineSink,
-    is_interrupted: &dyn Fn() -> bool,
-    clear_interrupt: &dyn Fn(),
+    cancel: CancellationToken,
     loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     // Print all tool call banners upfront
@@ -545,8 +544,7 @@ async fn execute_tools_parallel(
                 mode,
                 allowed_commands,
                 sink,
-                is_interrupted,
-                clear_interrupt,
+                cancel.clone(),
                 loop_continue_prompt,
             )
         })
@@ -585,15 +583,14 @@ async fn execute_tools_sequential(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
-    is_interrupted: &dyn Fn() -> bool,
-    clear_interrupt: &dyn Fn(),
+    cancel: CancellationToken,
+    cmd_rx: &mut mpsc::Receiver<EngineCommand>,
     loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<()> {
     for tc in tool_calls {
         // Check for interrupt before each tool
-        if is_interrupted() {
+        if cancel.is_cancelled() {
             println!("\n  \x1b[33m\u{26a0} Interrupted\x1b[0m");
-            clear_interrupt();
             return Ok(());
         }
 
@@ -663,14 +660,19 @@ async fn execute_tools_sequential(
                     None
                 };
 
-                match sink.request_approval(
+                match request_approval(
+                    sink,
+                    cmd_rx,
+                    &cancel,
                     &tc.function_name,
                     &detail,
                     diff_preview.as_deref(),
                     whitelist_hint.as_deref(),
-                ) {
-                    ApprovalDecision::Approve => {}
-                    ApprovalDecision::AlwaysAllow => {
+                )
+                .await
+                {
+                    Some(ApprovalDecision::Approve) => {}
+                    Some(ApprovalDecision::AlwaysAllow) => {
                         // Add to whitelist and persist
                         if let Some(ref pattern) = whitelist_hint {
                             if let Err(e) = settings.add_allowed_command(pattern) {
@@ -683,7 +685,7 @@ async fn execute_tools_sequential(
                         }
                         // Fall through to execute
                     }
-                    ApprovalDecision::Reject => {
+                    Some(ApprovalDecision::Reject) => {
                         db.insert_message(
                             session_id,
                             &Role::Tool,
@@ -695,7 +697,7 @@ async fn execute_tools_sequential(
                         .await?;
                         continue;
                     }
-                    ApprovalDecision::RejectWithFeedback { feedback } => {
+                    Some(ApprovalDecision::RejectWithFeedback { feedback }) => {
                         let result = format!("User rejected this action with feedback: {feedback}");
                         db.insert_message(
                             session_id,
@@ -707,6 +709,10 @@ async fn execute_tools_sequential(
                         )
                         .await?;
                         continue;
+                    }
+                    None => {
+                        // Cancelled
+                        return Ok(());
                     }
                 }
             }
@@ -722,8 +728,7 @@ async fn execute_tools_sequential(
             mode,
             &settings.approval.allowed_commands,
             sink,
-            is_interrupted,
-            clear_interrupt,
+            cancel.clone(),
             loop_continue_prompt,
         )
         .await;
@@ -758,8 +763,8 @@ async fn execute_sub_agent(
     mode: ApprovalMode,
     settings: &mut Settings,
     sink: &dyn crate::engine::EngineSink,
-    _is_interrupted: &dyn Fn() -> bool,
-    _clear_interrupt: &dyn Fn(),
+    _cancel: CancellationToken,
+    cmd_rx: &mut mpsc::Receiver<EngineCommand>,
     _loop_continue_prompt: &dyn Fn(u32, &[String]) -> loop_guard::LoopContinuation,
 ) -> Result<String> {
     let args: serde_json::Value = serde_json::from_str(arguments)?;
@@ -896,25 +901,32 @@ async fn execute_sub_agent(
                     } else {
                         None
                     };
-                    match sink.request_approval(
+                    let sub_cancel = CancellationToken::new();
+                    match request_approval(
+                        sink,
+                        cmd_rx,
+                        &sub_cancel,
                         &tc.function_name,
                         &detail,
                         diff_preview.as_deref(),
                         whitelist_hint.as_deref(),
-                    ) {
-                        ApprovalDecision::Approve => {
+                    )
+                    .await
+                    {
+                        Some(ApprovalDecision::Approve) => {
                             tools.execute(&tc.function_name, &tc.arguments).await.output
                         }
-                        ApprovalDecision::AlwaysAllow => {
+                        Some(ApprovalDecision::AlwaysAllow) => {
                             if let Some(ref pattern) = whitelist_hint {
                                 let _ = settings.add_allowed_command(pattern);
                             }
                             tools.execute(&tc.function_name, &tc.arguments).await.output
                         }
-                        ApprovalDecision::Reject => "[rejected by user]".to_string(),
-                        ApprovalDecision::RejectWithFeedback { feedback } => {
+                        Some(ApprovalDecision::Reject) => "[rejected by user]".to_string(),
+                        Some(ApprovalDecision::RejectWithFeedback { feedback }) => {
                             format!("[rejected: {feedback}]")
                         }
+                        None => "[cancelled]".to_string(),
                     }
                 }
             };
@@ -1010,6 +1022,45 @@ pub fn format_duration(d: std::time::Duration) -> String {
         let mins = secs / 60;
         let remaining = secs % 60;
         format!("{mins}m {remaining}s")
+    }
+}
+
+/// Emit an approval request and await the decision from the command channel.
+///
+/// Returns `None` if cancelled.
+async fn request_approval(
+    sink: &dyn crate::engine::EngineSink,
+    cmd_rx: &mut mpsc::Receiver<EngineCommand>,
+    cancel: &CancellationToken,
+    tool_name: &str,
+    detail: &str,
+    preview: Option<&str>,
+    whitelist_hint: Option<&str>,
+) -> Option<ApprovalDecision> {
+    let approval_id = uuid::Uuid::new_v4().to_string();
+    sink.emit(EngineEvent::ApprovalRequest {
+        id: approval_id.clone(),
+        tool_name: tool_name.to_string(),
+        detail: detail.to_string(),
+        preview: preview.map(|s| s.to_string()),
+        whitelist_hint: whitelist_hint.map(|s| s.to_string()),
+    });
+
+    loop {
+        tokio::select! {
+            cmd = cmd_rx.recv() => match cmd {
+                Some(EngineCommand::ApprovalResponse { id, decision }) if id == approval_id => {
+                    return Some(decision);
+                }
+                Some(EngineCommand::Interrupt) => {
+                    cancel.cancel();
+                    return None;
+                }
+                None => return None,  // channel closed
+                _ => continue,        // ignore unrelated commands
+            },
+            _ = cancel.cancelled() => return None,
+        }
     }
 }
 

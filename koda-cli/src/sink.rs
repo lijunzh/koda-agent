@@ -4,19 +4,21 @@
 //! to `display::` and `markdown::`. It's the default sink used in
 //! interactive and headless modes.
 
-use koda_core::engine::{ApprovalDecision, EngineEvent, EngineSink};
+use koda_core::engine::{ApprovalDecision, EngineCommand, EngineEvent, EngineSink};
 
 /// The CLI sink that renders EngineEvents to the terminal.
 pub struct CliSink {
     md: std::sync::Mutex<crate::markdown::MarkdownStreamer>,
     spinner: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    cmd_tx: tokio::sync::mpsc::Sender<EngineCommand>,
 }
 
 impl CliSink {
-    pub fn new() -> Self {
+    pub fn new(cmd_tx: tokio::sync::mpsc::Sender<EngineCommand>) -> Self {
         Self {
             md: std::sync::Mutex::new(crate::markdown::MarkdownStreamer::new()),
             spinner: std::sync::Mutex::new(None),
+            cmd_tx,
         }
     }
 
@@ -52,12 +54,6 @@ impl CliSink {
             eprint!("\r\x1b[K");
             let _ = std::io::Write::flush(&mut std::io::stderr());
         }
-    }
-}
-
-impl Default for CliSink {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -105,8 +101,31 @@ impl EngineSink for CliSink {
                 crate::display::print_sub_agent_start(&agent_name);
             }
             EngineEvent::SubAgentEnd { .. } => {}
-            EngineEvent::ApprovalRequest { .. } => {
-                // Approval is handled via request_approval(), not emit().
+            EngineEvent::ApprovalRequest {
+                id,
+                tool_name,
+                detail,
+                preview,
+                whitelist_hint,
+            } => {
+                // Show terminal confirmation and send response through channel
+                use crate::confirm::{self, Confirmation};
+                let decision = match confirm::confirm_tool_action(
+                    &tool_name,
+                    &detail,
+                    preview.as_deref(),
+                    whitelist_hint.as_deref(),
+                ) {
+                    Confirmation::Approved => ApprovalDecision::Approve,
+                    Confirmation::Rejected => ApprovalDecision::Reject,
+                    Confirmation::RejectedWithFeedback(fb) => {
+                        ApprovalDecision::RejectWithFeedback { feedback: fb }
+                    }
+                    Confirmation::AlwaysAllow => ApprovalDecision::AlwaysAllow,
+                };
+                let _ = self
+                    .cmd_tx
+                    .blocking_send(EngineCommand::ApprovalResponse { id, decision });
             }
             EngineEvent::ActionBlocked {
                 tool_name: _,
@@ -190,24 +209,6 @@ impl EngineSink for CliSink {
             EngineEvent::Error { message } => {
                 println!("  \x1b[31m\u{2717} {message}\x1b[0m");
             }
-        }
-    }
-
-    fn request_approval(
-        &self,
-        tool_name: &str,
-        detail: &str,
-        preview: Option<&str>,
-        whitelist_hint: Option<&str>,
-    ) -> ApprovalDecision {
-        use crate::confirm::{self, Confirmation};
-        match confirm::confirm_tool_action(tool_name, detail, preview, whitelist_hint) {
-            Confirmation::Approved => ApprovalDecision::Approve,
-            Confirmation::Rejected => ApprovalDecision::Reject,
-            Confirmation::RejectedWithFeedback(fb) => {
-                ApprovalDecision::RejectWithFeedback { feedback: fb }
-            }
-            Confirmation::AlwaysAllow => ApprovalDecision::AlwaysAllow,
         }
     }
 }

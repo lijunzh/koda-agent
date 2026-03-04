@@ -133,6 +133,11 @@ pub async fn run(
     let mut pending_command: Option<String> = None;
     let mut silent_compact_deferred = false;
 
+    // Channel for approval responses from CLI → engine
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::channel::<koda_core::engine::EngineCommand>(32);
+    let cli_sink = crate::sink::CliSink::new(cmd_tx);
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+
     loop {
         let input = if let Some(cmd) = pending_command.take() {
             cmd
@@ -458,9 +463,9 @@ pub async fn run(
             pending_images,
             current_mode,
             &mut settings,
-            &crate::sink::CliSink::new(),
-            &crate::interrupt::is_interrupted,
-            &crate::interrupt::clear,
+            &cli_sink,
+            cancel_token.clone(),
+            &mut cmd_rx,
             &crate::app::cli_loop_continue_prompt,
         )
         .await?;
@@ -571,9 +576,9 @@ pub async fn run_headless(
         pending_images,
         ApprovalMode::Yolo,
         &mut settings,
-        &crate::sink::CliSink::new(),
-        &crate::interrupt::is_interrupted,
-        &crate::interrupt::clear,
+        &crate::sink::CliSink::new(tokio::sync::mpsc::channel(32).0),
+        tokio_util::sync::CancellationToken::new(),
+        &mut tokio::sync::mpsc::channel(1).1,
         &crate::app::cli_loop_continue_prompt,
     )
     .await;

@@ -6,7 +6,7 @@
 //! - Future `AcpSink`: serializes over WebSocket
 //! - `TestSink`: collects events for assertions
 
-use super::event::{ApprovalDecision, EngineEvent};
+use super::event::EngineEvent;
 
 /// Trait for consuming engine events.
 ///
@@ -17,19 +17,6 @@ use super::event::{ApprovalDecision, EngineEvent};
 pub trait EngineSink: Send + Sync {
     /// Emit an engine event to the client.
     fn emit(&self, event: EngineEvent);
-
-    /// Request approval from the user for a tool action.
-    ///
-    /// This is a blocking request/response: the engine pauses until the
-    /// client decides. In CLI mode, this shows an interactive select widget.
-    /// In server mode, this sends a WebSocket message and awaits the response.
-    fn request_approval(
-        &self,
-        tool_name: &str,
-        detail: &str,
-        preview: Option<&str>,
-        whitelist_hint: Option<&str>,
-    ) -> ApprovalDecision;
 }
 
 /// A sink that collects events into a Vec for testing.
@@ -64,16 +51,6 @@ impl TestSink {
 impl EngineSink for TestSink {
     fn emit(&self, event: EngineEvent) {
         self.events.lock().unwrap().push(event);
-    }
-
-    fn request_approval(
-        &self,
-        _tool_name: &str,
-        _detail: &str,
-        _preview: Option<&str>,
-        _whitelist_hint: Option<&str>,
-    ) -> ApprovalDecision {
-        ApprovalDecision::Approve
     }
 }
 
